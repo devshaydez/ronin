@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.29;
+
+import {Script, console} from "forge-std/Script.sol";
+import {RoninReactive} from "../src/RoninReactive.sol";
+
+/// Step 1 (Lasna): the single Reactive contract that orchestrates every chain.
+/// Needs env: DEPLOYER_PK. Optional: RSC_FUND_WEI (default 5 lREACT), STALE_AFTER (default 900s).
+contract DeployReactive is Script {
+    function run() external {
+        uint256 pk = vm.envUint("DEPLOYER_PK");
+        vm.startBroadcast(pk);
+        RoninReactive rsc = new RoninReactive{value: vm.envOr("RSC_FUND_WEI", uint256(5 ether))}(
+            50, // minGapBps: 0.50% yield gap worth acting on
+            9500, // breakerUtilBps: 95% utilisation trips the breaker
+            150, // spikeBps: a 1.50% jump vs the EMA wakes the AI
+            vm.envOr("STALE_AFTER", uint256(900)), // seconds of silence before a chain is paused
+            15, // requestCooldown seconds per chain
+            5 // scheduled AI re-score every 5 Cron100 ticks (~10 min)
+        );
+        vm.stopBroadcast();
+        console.log("RSC=%s", address(rsc));
+    }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "ronin-ai-service",
+  "version": "0.3.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node index.js",
+    "ops": "node ops.js",
+    "ops:once": "node ops.js --once",
+    "proof": "node proof.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "viem": "^2.21.0"
+  }
+}
