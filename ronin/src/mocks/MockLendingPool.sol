@@ -20,6 +20,7 @@ contract MockLendingPool is Ownable {
     event RateUpdated(address indexed pool, uint256 rateBps, uint256 utilizationBps);
     event Deposited(address indexed account, uint256 amount);
     event Withdrawn(address indexed account, uint256 amount);
+    event YieldAccrued(address indexed account, uint256 amount);
 
     constructor(IERC20 asset_, string memory name_, uint256 rate_, uint256 util_, address owner_) Ownable(owner_) {
         asset = asset_;
@@ -50,5 +51,12 @@ contract MockLendingPool is Ownable {
 
     function balanceOf(address account) external view returns (uint256) {
         return _balances[account];
+    }
+
+    /// @notice Test/demo helper: credit `account` with yield. The caller must have funded the pool
+    ///         (mint the token to this address) so the extra balance is actually withdrawable.
+    function accrue(address account, uint256 amount) external {
+        _balances[account] += amount;
+        emit YieldAccrued(account, amount);
     }
 }

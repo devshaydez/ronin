@@ -5,6 +5,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IPayable} from "@reactive/src/interfaces/IPayable.sol";
 import {AbstractCallback} from "@reactive/src/base/AbstractCallback.sol";
 import {ILendingPool} from "./interfaces/ILendingPool.sol";
@@ -29,6 +30,26 @@ contract RoninVault is ERC4626, AbstractCallback {
     mapping(address => bool) public poolFrozen;
     mapping(uint256 => bool) public verdictUsed;
 
+    /// @notice Where a recurring payout draws from.
+    ///         YIELD_ONLY never touches principal (skips until the position has earned enough).
+    ///         YIELD_THEN_PRINCIPAL pays from yield first, then from principal.
+    enum PayoutMode {
+        YIELD_ONLY,
+        YIELD_THEN_PRINCIPAL
+    }
+
+    struct Plan {
+        address owner;
+        address payee;
+        uint128 amount;
+        uint32 period;
+        uint64 nextDue;
+        uint16 remaining;
+        bool active;
+        PayoutMode mode;
+        uint16 skips; // consecutive YIELD_ONLY skips (resets on a payout)
+    }
+
     bool public paused;
     bytes32 public pauseReason;
     uint16 public minConfidenceBps = 7000;
@@ -37,6 +58,16 @@ contract RoninVault is ERC4626, AbstractCallback {
     uint64 public cooldown = 20 seconds;
     uint64 public lastRebalance;
     uint256 public minAnnualGain; // asset units per year the move must earn to be worth it (0 = gate off)
+
+    // Standing orders ("Yield Salary")
+    uint32 public minPeriod = 120; // shortest allowed payout period, seconds
+    uint16 public maxSkips = 12; // consecutive YIELD_ONLY skips before the plan expires
+    uint256 public planCount;
+    mapping(uint256 => Plan) internal _plans;
+
+    /// @notice Assets each account put in and has not withdrawn (proportional on withdrawal/transfer).
+    ///         `convertToAssets(balanceOf(owner)) - costBasis[owner]` is the account's unrealised yield.
+    mapping(address => uint256) public costBasis;
 
     // Omnichain yield signal pushed by the Reactive contract (informational: lets a UI route new
     // deposits to the chain with the best yield; the vault does not bridge funds).
@@ -55,6 +86,30 @@ contract RoninVault is ERC4626, AbstractCallback {
     event PoolAdded(address indexed pool);
     event Unpaused();
     event PoolUnfrozen(address indexed pool);
+
+    // Standing orders. All plan data is in PlanCreated so the Reactive contract never has to read chain state.
+    event PlanCreated(
+        uint256 indexed id,
+        address indexed owner,
+        address indexed payee,
+        uint128 amount,
+        uint32 period,
+        uint64 nextDue,
+        uint16 remaining,
+        PayoutMode mode
+    );
+    event PlanCancelled(uint256 indexed id);
+    event PlanSkipped(uint256 indexed id, string reason);
+    event PlanExpired(uint256 indexed id);
+    event PlanExecuted(
+        uint256 indexed id,
+        address indexed payee,
+        uint256 amount,
+        uint256 fromYield,
+        uint256 fromPrincipal,
+        uint64 nextDue,
+        uint16 remaining
+    );
 
     modifier onlyAdmin() {
         require(msg.sender == admin, "only admin");
@@ -100,6 +155,7 @@ contract RoninVault is ERC4626, AbstractCallback {
 
     function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal override {
         super._deposit(caller, receiver, assets, shares);
+        costBasis[receiver] += assets;
         _deployIdle();
     }
 
@@ -107,13 +163,139 @@ contract RoninVault is ERC4626, AbstractCallback {
         internal
         override
     {
+        uint256 sharesBefore = balanceOf(owner_);
         uint256 idle = IERC20(asset()).balanceOf(address(this));
         if (idle < assets) _pullFromPools(assets - idle);
         super._withdraw(caller, receiver, owner_, assets, shares);
+
+        // Withdrawals (including plan payouts) consume cost basis in proportion to the shares burned.
+        // Round the reduction UP so the remaining basis can never exceed the remaining principal.
+        uint256 basis = costBasis[owner_];
+        if (basis > 0 && sharesBefore > 0) {
+            uint256 cut = Math.mulDiv(basis, shares, sharesBefore, Math.Rounding.Ceil);
+            costBasis[owner_] = basis > cut ? basis - cut : 0;
+        }
+    }
+
+    /// @dev Plain share transfers move cost basis proportionally, so yield cannot be created or destroyed
+    ///      by moving shares between wallets. Mints and burns are handled in _deposit/_withdraw above.
+    function _update(address from, address to, uint256 value) internal override {
+        if (from != address(0) && to != address(0) && value > 0) {
+            uint256 balBefore = balanceOf(from);
+            uint256 basis = costBasis[from];
+            if (balBefore > 0 && basis > 0) {
+                uint256 moved = Math.mulDiv(basis, value, balBefore);
+                costBasis[from] = basis - moved;
+                costBasis[to] += moved;
+            }
+        }
+        super._update(from, to, value);
     }
 
     function poolsLength() external view returns (uint256) {
         return pools.length;
+    }
+
+    // ───────────────────── Standing orders ("Yield Salary") ─────────────────────
+
+    /// @notice Create a recurring payout. The Reactive contract sees PlanCreated and schedules the payouts;
+    ///         no keeper or signature is needed after this transaction.
+    function createPlan(address payee, uint128 amount, uint32 period, uint16 count, PayoutMode mode)
+        external
+        returns (uint256 id)
+    {
+        require(payee != address(0), "payee required");
+        require(amount > 0, "amount required");
+        require(period >= minPeriod, "period too short");
+        require(count >= 1 && count <= 365, "count out of range");
+
+        id = ++planCount;
+        uint64 nextDue = uint64(block.timestamp + period);
+        _plans[id] = Plan({
+            owner: msg.sender,
+            payee: payee,
+            amount: amount,
+            period: period,
+            nextDue: nextDue,
+            remaining: count,
+            active: true,
+            mode: mode,
+            skips: 0
+        });
+        emit PlanCreated(id, msg.sender, payee, amount, period, nextDue, count, mode);
+    }
+
+    /// @notice Stop a plan. Only its owner may do this.
+    function cancelPlan(uint256 id) external {
+        Plan storage p = _plans[id];
+        require(p.owner == msg.sender, "only plan owner");
+        require(p.active, "inactive");
+        p.active = false;
+        emit PlanCancelled(id);
+    }
+
+    /// @notice Execute one due payout. Called only by the Reactive contract, through the callback proxy.
+    ///         Payouts keep working while the vault is paused: a pause only blocks deposits.
+    function executePlan(address reactive_, uint256 id)
+        external
+        onlyServiceProvider
+        onlyCallbackSender(reactive_)
+    {
+        Plan storage p = _plans[id];
+        require(p.active, "inactive");
+        require(block.timestamp >= p.nextDue, "not due");
+
+        address owner_ = p.owner;
+        uint256 amount = p.amount;
+        uint256 fromYield;
+        uint256 fromPrincipal;
+
+        if (p.mode == PayoutMode.YIELD_ONLY) {
+            if (yieldAvailable(owner_) < amount) {
+                // No principal is touched, and the period does not consume a payment: the salary is simply
+                // postponed. Too many consecutive empty periods expire the plan instead of retrying forever.
+                p.nextDue = uint64(uint256(p.nextDue) + p.period);
+                p.skips++;
+                emit PlanSkipped(id, "no yield yet");
+                if (p.skips >= maxSkips) {
+                    p.active = false;
+                    emit PlanExpired(id);
+                }
+                return;
+            }
+            fromYield = amount;
+        } else {
+            if (maxWithdraw(owner_) < amount) {
+                p.nextDue = uint64(uint256(p.nextDue) + p.period);
+                p.remaining--;
+                emit PlanSkipped(id, "insufficient");
+                if (p.remaining == 0) p.active = false;
+                return;
+            }
+            uint256 yield_ = yieldAvailable(owner_);
+            fromYield = yield_ < amount ? yield_ : amount;
+            fromPrincipal = amount - fromYield;
+        }
+
+        uint256 shares = previewWithdraw(amount);
+        _withdraw(owner_, p.payee, owner_, amount, shares);
+
+        p.skips = 0;
+        p.nextDue = uint64(uint256(p.nextDue) + p.period);
+        p.remaining--;
+        if (p.remaining == 0) p.active = false;
+        emit PlanExecuted(id, p.payee, amount, fromYield, fromPrincipal, p.nextDue, p.remaining);
+    }
+
+    /// @notice Unrealised yield for an account: current value minus what it deposited (net of withdrawals).
+    function yieldAvailable(address owner_) public view returns (uint256) {
+        uint256 value = convertToAssets(balanceOf(owner_));
+        uint256 basis = costBasis[owner_];
+        return value > basis ? value - basis : 0;
+    }
+
+    function plans(uint256 id) external view returns (Plan memory) {
+        return _plans[id];
     }
 
     // ───────────────────── Reactive callbacks ─────────────────────
@@ -244,6 +426,17 @@ contract RoninVault is ERC4626, AbstractCallback {
 
     function setMinAnnualGain(uint256 minAnnualGain_) external onlyAdmin {
         minAnnualGain = minAnnualGain_;
+    }
+
+    function setMinPeriod(uint32 minPeriod_) external onlyAdmin {
+        require(minPeriod_ > 0, "period");
+        minPeriod = minPeriod_;
+    }
+
+    /// @notice Consecutive YIELD_ONLY skips before a plan expires (1..365).
+    function setMaxSkips(uint16 maxSkips_) external onlyAdmin {
+        require(maxSkips_ >= 1 && maxSkips_ <= 365, "maxSkips");
+        maxSkips = maxSkips_;
     }
 
     /// @notice Settle outstanding callback debt from this contract's ETH balance.

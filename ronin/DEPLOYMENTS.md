@@ -1,7 +1,8 @@
 # Deployments
 
-Live testnet deployment of Ronin. All transactions below have receipt status `1`.
-Deployed **2026-11-18** with Foundry 1.9.0 (solc 0.8.29, `evm_version = cancun`, `via_ir = true`).
+Live testnet deployment of Ronin, including standing orders (plans) and callback ack/retry.
+Every transaction below has receipt status `1` unless noted.
+Deployed **2026-11-19** with Foundry 1.9.0 (solc 0.8.29, `evm_version = cancun`, `via_ir = true`).
 
 ## Networks
 
@@ -15,10 +16,11 @@ Deployed **2026-11-18** with Foundry 1.9.0 (solc 0.8.29, `evm_version = cancun`,
 
 | Contract | Address | Tx | Block |
 |---|---|---|---|
-| `RoninReactive` | `0x38661a70826bbf26c7e3d50e0952229d0b3ace13` | `0x12bc86b6bd14ffc01f83398b77f5eb6460e465db6afe05804821c9e1e5056e12` | 8590491 |
+| `RoninReactive` | `0x8f52a476Ff46D070a4450Fb7283Cb1De6A886813` | `0x08679a6b70e3882dcfc046186129ac926fbc361333ff99c77a1d3e67929ac28f` | 8684076 |
 
 Constructor parameters: `minGapBps=50`, `breakerUtilBps=9500`, `spikeBps=150`,
-`staleAfter=900`, `requestCooldown=15`, `cronEvery=5`; funded with 5 lREACT.
+`staleAfter=900`, `requestCooldown=15`, `cronEvery=5`; funded with 3 lREACT at deploy.
+`retryAfter=360s`, `maxVerdictAge=900s`, `MAX_ATTEMPTS=3`, `MAX_PLANS_PER_TICK=5`.
 
 ## Base Sepolia (84532)
 
@@ -26,11 +28,11 @@ Aave V3 mode: the vault holds the real Aave USDC reserve, with one mock stress p
 
 | Contract | Address | Tx | Block |
 |---|---|---|---|
-| `AaveV3Adapter` | `0x38661a70826Bbf26c7e3d50E0952229D0B3AcE13` | `0x865c69f935f039369b07d646cadf98ac1b5ac1c51471d480c88d746fa8f4e869` | 60090347 |
-| `MockLendingPool` (stress, `POOL_B`) | `0xb56be38E6fdb9a4c8a791d90906901509393b819` | `0xea1ee0850100aad8b48296c84c6b1366df7573159e8431b669c11986792e064c` | 60090347 |
-| `DecisionRequester` | `0x5171b5432F63Fc2f853E7fe20ACDB6b916487ABE` | `0x66776d8fd3c2f93034907104d7fe06991384f3245f5d6163bc52eec6492f0f81` | 60090347 |
-| `AIVerdictRegistry` | `0x2951854273295De243A05aeB9E60BCC98F6df9E1` | `0x82322145a292b7a207abe3dcde543d696fb3ee647c8e26bc4ac752b3f467e04a` | 60090347 |
-| `RoninVault` | `0x27e5251fb16e4E8446e4E6FA20F830EA145D18FC` | `0xad662c350a79cb5ab58a60e4323c5471ce5cb0723ced920fda66ff00fc4744a6` | 60090347 |
+| `AaveV3Adapter` | `0x4384345dD2fCA2656A7E7105D74D313e0eF5A27B` | `0xff6a5bc5d44eadc0b2e26b2c67750089624444f767a195a6c49313573474f8b0` | 60586085 |
+| `MockLendingPool` (stress, `POOL_B`) | `0xa8E0681Ca84A84CB971bcD8485d91e03DB96c740` | `0xef3847999fb6e882818137c667a59b2a73346d1e3e11a33204e76f6cc735c51a` | 60586085 |
+| `DecisionRequester` | `0x2780a1a41e73859b06683D6da0d993Dae0b797f9` | `0xaa9b44b41354758cd5095147a8920aafd80b28a7a952fe920cbbbd4e8da37d67` | 60586085 |
+| `AIVerdictRegistry` | `0x0fe0591be4eb54DE1Be6Ec53EBFaC05F86B9758D` | `0x7e1b80eb442f654cfdfb6f1d949ab03f0b13e57652f493a4488475a80bb4c0ca` | 60586085 |
+| `RoninVault` | `0x1827b78aCEBb5085CFB7C6DCC474414983348Ec9` | `0x8fc9dea97a28528a1c3b81445b6c510da6c62dffc1a5c64cce12d60648608007` | 60586085 |
 
 External contracts:
 
@@ -40,51 +42,85 @@ External contracts:
 | USDC reserve (asset) | `0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f` |
 | Callback proxy (Base Sepolia) | `0x476F44b11F5C942c58f4c8E3d0300E5710743585` |
 
-> The adapter and the Reactive contract share the same address because both were the deployer's
-> nonce-0 CREATE on their respective chains. They are independent contracts on different networks.
-
-### Extra Base Sepolia pool (realistic-yield demo)
-
-Deployed after the first demo attempt to give the AI a plausible (not 150x) opportunity.
-
-| Contract | Address | Tx | Block |
-|---|---|---|---|
-| `MockLendingPool` (YieldPool, 150 bps / 10% util) | `0x20a6168e96a793e66733aFedd542DD6583eB7A53` | `0x4782dc5fed635934930a965e61c62be798fb2c55f3ac9a6bb5d59f929ac3ad4c` | 60548438 |
-
-`vault.addPool(YieldPool)` — `0x4955ffa6e769f6be68d0cf592bd68c3be5ca3627819ce513142aa3ed5ff5a9f3` (block 60548487).
-`rsc.watchPool(84532, YieldPool)` — `0x9ff9679546579881b18846a094d39050841df689e03c3f208d8f578ca267a8da` (Lasna).
-
 ## Unichain Sepolia (1301) — mock mode
 
 `MockUSDC` plus two mock pools; deployed with callback proxy `0x775c9B990ADe401060B78D0e98684eEf8d2466C1`.
 
 | Contract | Address | Tx | Block |
 |---|---|---|---|
-| `MockUSDC` | `0x38661a70826bbf26c7e3d50e0952229d0b3ace13` | `0x87d4ad3f5ef94d161513e82d4e1871d8edd36297005149e69b42607bb66950b1` | 68177453 |
-| `MockLendingPool` A | `0xb56be38E6fdb9a4c8a791d90906901509393b819` | `0x68432b109e8477f34de9263c9bfba82be2a743b0863d78564b1b1865078b90c2` | 68177453 |
-| `MockLendingPool` B | `0x5171b5432F63Fc2f853E7fe20ACDB6b916487ABE` | `0xd2680752a69ff3872a8261e6b2a1ef6ed541c6fcf44380b0b302e3977d41c3c5` | 68177453 |
-| `DecisionRequester` | `0x27e5251fb16e4e8446e4e6fa20f830ea145d18fc` | `0x1f9450fac6852601aea2ec5a3775e8e5896b09c239b6d8dfaf3d1b3cd1818116` | 68177453 |
-| `AIVerdictRegistry` | `0x3b9dd4661a81ad6ed169cb09c0d7669a644cd92d` | `0xbf7d631cbdba2298b5806aa7dfb9d81d93022564c5795e2359525c6f9b95a04a` | 68177453 |
-| `RoninVault` | `0x071c632a690410fe2059484d6b1117df1ad6d2ca` | `0x90cd73cb299ed5922ece49452e283d32ff14fd200f6138d5c70b72c56342ad6c` | 68177453 |
+| `MockUSDC` | `0xeFBcde7Af346A2aCd1429941F6F53B4Ed5c4AD1A` | `0x5251469f52181a9b4ca131920bf75c79692fd7a5d461ecbdd4c0a552ae52f389` | 68186674 |
+| `MockLendingPool` A | `0x20a6168e96a793e66733aFedd542DD6583eB7A53` | `0x95cdb09d355cfedb470a0d80955876a71a21bdb07ee33e18938eb7ab1bcbc17a` | 68186674 |
+| `MockLendingPool` B | `0x75CFCe08ca24a68F51373f1643c5F273B6e0265f` | `0x5ea952204beb3d590038b6c9b3f3ca845081464562c2e3142a4aeeb92a266112` | 68186674 |
+| `DecisionRequester` | `0xd62B60a3a9893B43f91CC5233B2B50b6E973732F` | `0xe59510580ac0bc7cf8b948dc82deb2ba7b8b6edbccd94cca6471eefac1a9084e` | 68186674 |
+| `AIVerdictRegistry` | `0xd25d9bE29D617305Dc1F39600604C00DA3D99eC9` | `0x9a598d811b431d430fdc22f7d517a7114ac763ec98a2ed978c19a4e4f688b7c0` | 68186674 |
+| `RoninVault` | `0x4384345dD2fCA2656A7E7105D74D313e0eF5A27B` | `0x8ef5f14c26d4a183481d0469d3ccd4fb740b518561fb28ee7bfe475743766667` | 68186674 |
 
-Wiring: `configureChain(1301, ...)` — Lasna tx `0x07cd21e459175af49c36345ac60d7e1b6470ad83bbc1fbe2c89ccd523f300b78` (block 8675442).
-
-## Wiring (Lasna, chain 84532)
+## Wiring (Lasna)
 
 | Call | Tx | Block |
 |---|---|---|
-| `configureChain(84532, vault, requester, registry, [stressPool])` | `0x3571cc99d97338d9e66d26f2d6d58ab562c82ceb78b52c22bfaf8a2ece7e8d6a` | 8590650 |
-| `configureAave(84532, aavePool, usdc, adapter)` | `0x7419c8e6999d2e896c85a9889f3f552d9254f12c45028eb7c4d4a70167ea35cc` | 8590650 |
+| `configureChain(84532, vault, requester, registry, [stressPool])` | `0xb381ff8d98b08c2f5f3c7b922c7fa9442be3cb3796d9a27b8aa74caa864d38d7` | 8684153 |
+| `configureAave(84532, aavePool, usdc, adapter)` | `0x6e552f32e7becd4161f9612c75f867e2d427ee7e7e578276747e49fea5d73cfd` | 8684153 |
+| `configureChain(1301, vault, requester, registry, [poolA, poolB])` | `0x8a4ac0be0883e15c6bde42c3eeccd893c1834db5eb47a4428ee89e097f02893f` | 8684167 |
 
-State after wiring: `poolCount(84532) = 2` (stress pool + adapter), then 3 after `watchPool` added YieldPool; 8 active subscriptions
-(1 CRON + 3 vault events + registry verdict + requester request + stress `RateUpdated` +
-Aave `ReserveDataUpdated` filtered to the USDC reserve). Reactive MCP: `HEALTHY`, 8/8 active,
-0 debt, 0 reverts.
+State after wiring: `chainCount=2`, `poolCount(84532)=2` (stress pool + Aave adapter),
+`poolCount(1301)=2`; 27 subscriptions (14 per chain: CRON + 9 vault events + registry verdict +
+requester request + 2 pool `RateUpdated`, plus the Aave `ReserveDataUpdated` filtered to the USDC
+reserve on Base). Reactive MCP: `HEALTHY`, **27/27 active**, 0 debt, 0 reverts.
+
+## Funding
+
+| Purpose | Amount | Tx |
+|---|---|---|
+| RSC reserves at deploy | 3 lREACT | in `0x08679a6b…` |
+| RSC Omni reserves (clears debt, ~92 reactions) | 1.5 lREACT | `0xa40ed6ca86834367e655c521953e99ca907bd310359fb1168468da89814c7dd8` |
+| Base vault callback reserves at proxy | 0.002 ETH | `0xd2c6f99229b06be1ba12886579ff84fbeceed4afa84fa33303c746d8523421d8` |
+| Unichain vault callback reserves at proxy | 0.002 ETH | `0xa524b41eb5ad34c52718c60fb78e2aa37612220d4988d6da559ddde43f775104` |
+
+Callback fees are charged to the destination contract in the destination chain's native currency.
+Prepaying reserves at the callback proxy (`depositTo(address)`) is what made deliveries land here;
+with zero reserves the requests were accepted by the network but never delivered.
+
+## Demo data (2026-11-19)
+
+| Step | Chain | Tx |
+|---|---|---|
+| Mint + deposit 1,000 USDC | Base Sepolia | `0x63268a9a1d9448ea9ee18be10228a259c848f008bc22bcb57f2573db0cc5d554` |
+| Mint + deposit 1,000 USDC | Unichain Sepolia | `0x133a46149009f4930da6ef5b987922a755de2b95324edae358033d0c29447ce4` |
+| Accrue 5 USDC yield on Pool A (`accrue`) | Unichain Sepolia | `0x7a45684a45bc88d3b47a09618db63da039713547750134d82c3a6e54c4404b60` |
+| `createPlan` id 5, YIELD_ONLY 1 USDC / 120s / 3 | Unichain Sepolia | `0x3795dccbbf89c60a7402360b93ad3f461c58e995b90c9f76a843eede26a3e809` |
+| `createPlan` id 6, YIELD_THEN_PRINCIPAL 2 USDC | Unichain Sepolia | `0xd2fa6e1dfb9039a60a73fbe041572f3f7228cf8fb3f4b80c431a21cce1141d21` |
+| `createPlan` id 3, YIELD_ONLY 1 USDC | Base Sepolia | `0xbe07701e8b75bab31cbf738027eeaa85b6bd8045402250b9a3b60f9938cb13e3` |
+| `createPlan` id 7, YIELD_ONLY 1 USDC | Unichain Sepolia | `0x74fb39c9210ac4378ca2aa71b17adcd4361989a8b722e0a55fd3eb56423ad9b0` |
+| `createPlan` id 8, YIELD_THEN_PRINCIPAL 2 USDC | Unichain Sepolia | `0xf5f31ff9a64b024f9d00e8cbc49b7660f12b18f807aaa37518f8b7ae8d9e2cf7` |
+| `createPlan` id 4, YIELD_ONLY 1 USDC | Base Sepolia | `0x9de2a582798e5920f8995633e53ca07772cd11756054e261b7655d723ebbe645` |
+| CRON tick: executes Unichain plans | Lasna | `0xf90f9e41d46af8fa8a1738af789e2f84a713bf59bc3bdb50440f8683091b5518` (2 callbacks) |
+| CRON tick: Base plan skip path | Lasna | `0x82b858172989bd04812399a6e367a3e358171bcc10decf4d0e4a42f9f8cf1469` (1 callback) |
+
+Results after the CRON ticks:
+
+| Plan | Mode | Outcome |
+|---|---|---|
+| Unichain 5 | YIELD_ONLY | 3/3 paid, `remaining=0`, RSC plan closed (`active=false`) |
+| Unichain 6 | YIELD_THEN_PRINCIPAL | 3/3 paid, `remaining=0`, RSC plan closed |
+| Unichain 7 | YIELD_ONLY | paid 2/3 so far, `remaining=1` |
+| Unichain 8 | YIELD_THEN_PRINCIPAL | paid 2/3 so far, `remaining=1` |
+| Base 3 | YIELD_ONLY | 3 periods skipped (`skips=3`), `remaining=3` — no yield on Base, principal untouched |
+| Base 4 | YIELD_ONLY | 3 periods skipped, `remaining=3` |
+
+Payee `0x33F693201E2fFEf0eD41f624Ec0502a0264a5368` received **15 USDC** on Unichain; the vault's
+`totalAssets` moved from 1,005 to 990 USDC (1,000 principal + 5 yield − 15 paid out), and
+`yieldAvailable` is 4.925 USDC.
+
+The plans created before the destination proxies were funded were requested three times each
+(`ActionRetried`), then marked `ActionStuck`; once the proxies had reserves the deliveries landed and
+the `PlanExecuted` acks cleared the stuck flag and settled the plans. That is the retry/stuck path
+working end to end.
 
 ## Reactive proxies used
 
 Callback proxies are the `msg.sender` that destination contracts must trust. Checked against
-<https://dev.reactive.network/origins-and-destinations> on 2026-11-18:
+<https://dev.reactive.network/origins-and-destinations> on 2026-11-19:
 
 | Network | Chain ID | Callback proxy | Source |
 |---|---|---|---|
@@ -99,37 +135,36 @@ Reactive-side system addresses used by the contract:
 | Legacy system proxy | `0x0000000000000000000000000000000000fffFfF` |
 | Cron100 event emitter (Lasna) | same system contract; `Cron100(uint256)` topic |
 
-## End-to-end demo transactions (2026-11-18)
+## Standing orders + ack/retry
 
-| Step | Chain | Tx |
-|---|---|---|
-| Deposit 1,000 USDC (approve / deposit) | Base Sepolia | `0x69f508678e3ff19df352ab63cd84a5895cb606db25b3d70a8a6fdc3e8e229dde` / `0x4d2b6a213acfcc08fa5e0a919c89073095b351f97d8e666b3decb4974704d46b` |
-| Stress pool 1 bps (send idle to Aave) | Base Sepolia | `0x7162b76e71b868122e1bb3261e84e72d203388245d5decc85af7e8404cd001f5` |
-| Stress spike to 900 bps (AI refused, safety) | Base Sepolia | `0x1df987428b5354a04d3cd3a0ef3841e9de8a3037c6a47b9c6f1c4bed2c2064ca` |
-| Realistic 150 bps rate on YieldPool (AI ACT) | Base Sepolia | `0xa09bd257f3bc36fc9e8c03ded9d9d3639390408da40e29296f5b4aa95a6cffbd` |
-| Reactive reaction (RateObserved + DecisionRequestSent + OmniSignal) | Lasna | `0xbbb6e2e7e614fda51f13129c04a8b089e8a63afa545f7e529a6d30e3e77ae722` |
-| AI verdict `ACT` 80% (`VerdictPosted`) | Base Sepolia | `0x02e95676e3801fd59367c0acaa02d39fe359de8c0e0d7f8ea291c5bb7503de68` |
-| Reactive reaction (rebalance callback) | Lasna | `0x62654a81bdf5c161d584cd505fdf5ce3d354f26613ce05e45c0198df9b4c387c` |
-| Vault `Rebalanced` (500 USDC to YieldPool) | Base Sepolia | `0x176f235ceafeded9f192a7b8a0a60a030d1c639127b7034f85ca21ea37a16e13` |
-| `LoopClosed` (7s request→rebalance) | Lasna | `0x9c61ae16681e7a67b7ebcb12d01bccb7c9fb9a4fe7d68ac00302c8d241d3d92b` |
-| Breaker origin: util 97% | Unichain Sepolia | `0x8f5607cbc65ce939654a6873b3c8d8ca5965de9dc91510ab96ec2225dfb282e7` |
-| Reactive reaction (emergencyExit) | Lasna | `0xa4dc94903c4d439bbd1993ec28f4cade1053af782072c98d47bef062a3872431` |
-| `EmergencyExit` (0 assets) | Unichain Sepolia | `0xd39619dad05eb9290c06ae535a1ae14928fbee78966815508572c7c1fb93059d` |
-| `PausedByReactive` (omnichain pause) | Base Sepolia | `0x847545677ae92636098f2dff513c8c4a885ca293b1cd5bfafead4c3116b4b8a0` |
-| Heal: util 40% | Unichain Sepolia | `0x7d27bb7505003b4aa559d45c2f107646cf6287dc3a5edbdf84079e15479b2ca5` |
-| `UnpausedByReactive` (self-heal) | Base Sepolia | `0xf4c51c42748708e4c1f6b7e15859e6caa73c7a34e13bb6311e3f61e4d8e7ca57` |
-| Watchdog: `staleAfter=60` | Lasna | `0x960440e78821409d834a4ec2db69c6c8e35b5f59d57821b26bc2c923edeef4ba` |
-| Watchdog heal: rate update | Unichain Sepolia | `0xf081ed618ad21a24e897e095551ec91f5063d11dc391b4a63a4bdcf7b840da74` |
-| Watchdog: restore `staleAfter=900` | Lasna | `0x4a1443d645dfb54e90f423c90cb97c5887257841b4956438c4d73e7b98d21a07` |
+Vault: `createPlan(payee, amount, period, count, mode)`, `cancelPlan(id)`, `executePlan(reactive_, id)`,
+`plans(id)`, `planCount()`, `yieldAvailable(owner)`, `costBasis(owner)`, `setMinPeriod`, `setMaxSkips`.
+Mode `0 = YIELD_ONLY`, `1 = YIELD_THEN_PRINCIPAL`.
+
+RSC: `planCount()`, `planAt(i)`, `planInfo(chainId, id)`, `setRetryParams(retryAfter, maxVerdictAge)`.
+`configureChain` subscribes to 6 more events (14 per chain instead of 8):
+
+| Event | topic0 |
+|---|---|
+| `PlanCreated(uint256,address,address,uint128,uint32,uint64,uint16,uint8)` | `0x46e6829d23727a020a3f5bebd377fb20abd8af9811bc36638b0b8b9abc52b3ee` |
+| `PlanExecuted(uint256,address,uint256,uint256,uint256,uint64,uint16)` | `0x0688fb1ba455142caf0e7daa5a3c730c6b99a781810bfbf4f6e043ba131d5d86` |
+| `PlanSkipped(uint256,string)` | `0xdc1a465662400ff115a4bfde2d64a858ccb9ab0745c8be374e9c8693988ca76f` |
+| `PlanCancelled(uint256)` | `0x09f4c2fd13cc57768b21af5847536074d3fab1d1dfe1e382d9259c516945ea6d` |
+| `PlanExpired(uint256)` | `0x6df66e70340987de0626ea385e5a00454d17abef7a418c42e54c01a33cf3b3ed` |
+| `RebalanceSkipped(uint256,uint256,uint256)` | `0xd06073484b9e22103737720d9821eefcaeac4131395f8c0402054a2c6ba3be4b` |
+
+`MAX_PLANS_PER_TICK = 5`; a local cron tick with 5 due plans measures **746,897 gas**
+(`test_gasCronTickWithMaxPlans`), under the 900k react cap.
 
 ## Verification shortcuts
 
 ```bash
 export LASNA_RPC=https://lasna-rpc.rnk.dev/
-RSC=0x38661a70826bbf26c7e3d50e0952229d0b3ace13
-cast call $RSC "poolCount(uint256)(uint256)" 84532 --rpc-url $LASNA_RPC   # 2
-cast call $RSC "isWatched(uint256,address)(bool)" 84532 \
-  0x38661a70826Bbf26c7e3d50E0952229D0B3AcE13 --rpc-url $LASNA_RPC       # true
-cast call 0x38661a70826Bbf26c7e3d50E0952229D0B3AcE13 "rateBps()(uint256)" \
-  --rpc-url $BASE_SEPOLIA_RPC                                            # Aave supply APR in bps
+RSC=0x8f52a476Ff46D070a4450Fb7283Cb1De6A886813
+cast call $RSC "planCount()(uint256)" --rpc-url $LASNA_RPC              # 6 plans mirrored
+cast call $RSC "planAt(uint256)(uint256,uint256,uint64,uint16,bool,uint8)" 3 --rpc-url $LASNA_RPC
+cast call $RSC "ticks()(uint256)" --rpc-url $LASNA_RPC                 # CRON ticks processed
+cast call 0x4384345dD2fCA2656A7E7105D74D313e0eF5A27B \
+  "plans(uint256)(address,address,uint128,uint32,uint64,uint16,bool,uint8,uint16)" 7 \
+  --rpc-url $UNICHAIN_SEPOLIA_RPC                                      # paid 2/3
 ```

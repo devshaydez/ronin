@@ -57,6 +57,17 @@ const events = parseAbi([
   "event OmniSignalSent(uint256 indexed chainId, uint256 localBestBps, uint256 globalBestBps, uint256 globalBestChainId)",
   "event PoolWatched(uint256 indexed chainId, address indexed pool)",
   "event SelfFunded(uint256 reservesBefore, uint256 amount)",
+  "event PlanScheduled(uint256 indexed chainId, uint256 indexed planId, uint64 nextDue, uint16 remaining)",
+  "event ActionRetried(uint256 indexed chainId, uint8 kind, uint256 indexed id, uint8 attempt, uint256 originTx)",
+  "event ActionStuck(uint256 indexed chainId, uint8 kind, uint256 indexed id, uint256 originTx)",
+]);
+
+const planAbi = parseAbi([
+  "event PlanCreated(uint256 indexed id, address indexed owner, address indexed payee, uint128 amount, uint32 period, uint64 nextDue, uint16 remaining, uint8 mode)",
+  "event PlanExecuted(uint256 indexed id, address indexed payee, uint256 amount, uint256 fromYield, uint256 fromPrincipal, uint64 nextDue, uint16 remaining)",
+  "event PlanSkipped(uint256 indexed id, string reason)",
+  "event PlanCancelled(uint256 indexed id)",
+  "event PlanExpired(uint256 indexed id)",
 ]);
 
 const systemAbi = [
@@ -173,6 +184,51 @@ for (const [txHash, ls] of byTx) {
   });
 }
 
+// ── standing orders: scan the origin vaults directly (Plan* events live on Base/Unichain) ──
+const PLAN_BLOCKS = BigInt(arg("plan-blocks", "6000"));
+const planVaults = [
+  { chainId: 84532, address: process.env.BASE_VAULT },
+  { chainId: 1301, address: process.env.UNICHAIN_VAULT },
+].filter((v) => v.address && origins[v.chainId]?.client);
+const planRows = [];
+for (const v of planVaults) {
+  const client = origins[v.chainId].client;
+  let latestPlan;
+  try {
+    latestPlan = await client.getBlockNumber();
+  } catch {
+    continue;
+  }
+  const fromPlan = latestPlan > PLAN_BLOCKS ? latestPlan - PLAN_BLOCKS : 0n;
+  // Base caps eth_getLogs at 200 blocks; Unichain's load-balanced RPC fails above ~1000 blocks.
+  const step = v.chainId === 84532 ? 200n : 800n;
+  for (let s = fromPlan; s <= latestPlan; s += step) {
+    const e = s + step - 1n < latestPlan ? s + step - 1n : latestPlan;
+    try {
+      const ls = await client.getLogs({ address: v.address, events: planAbi, fromBlock: s, toBlock: e });
+      for (const l of ls) planRows.push({ chainId: v.chainId, ...l });
+    } catch {
+      /* skip an unreadable chunk; the rest of the proof still renders */
+    }
+  }
+}
+planRows.sort((a, b) => Number(a.blockNumber - b.blockNumber));
+
+const MODE = ["YIELD_ONLY", "YIELD_THEN_PRINCIPAL"];
+const usd = (x) => (Number(x) / 1e6).toLocaleString("en-US", { maximumFractionDigits: 6 });
+function planDetail(l) {
+  const a = l.args;
+  if (l.eventName === "PlanCreated")
+    return `payee ${a.payee}, ${usd(a.amount)} USDC / ${a.period}s, ${MODE[Number(a.mode)] ?? a.mode}, ${a.remaining} left`;
+  if (l.eventName === "PlanExecuted")
+    return `${usd(a.amount)} USDC (yield ${usd(a.fromYield)} / principal ${usd(a.fromPrincipal)}), ${a.remaining} left`;
+  if (l.eventName === "PlanSkipped") return a.reason;
+  return "";
+}
+
+const retried = logs.filter((l) => l.eventName === "ActionRetried").length;
+const stuck = logs.filter((l) => l.eventName === "ActionStuck").length;
+
 const audit = await subscriptionAudit();
 
 const md = [];
@@ -190,6 +246,22 @@ for (const r of rows) {
   md.push(
     `| ${r.what} | ${r.originTx ? link(r.chainId, r.originTx) : "n/a (internal)"} | \`${r.txHash}\` | ${dest} | ${r.reactiveLatency != null ? r.reactiveLatency + "s" : "n/a"} | ${r.latency != null ? r.latency + "s" : "n/a"} |`
   );
+}
+md.push(``);
+md.push(`Ack/retry in this window: **${retried}** \`ActionRetried\`, **${stuck}** \`ActionStuck\`.`);
+md.push(``);
+md.push(`## Standing orders (\`Plan*\` events on the origin vaults)`);
+if (planVaults.length === 0) {
+  md.push(`Set \`BASE_VAULT\` and/or \`UNICHAIN_VAULT\` to include plan payouts in this report.`);
+} else {
+  md.push(`| Chain | Event | Plan | Detail | Tx |`);
+  md.push(`|---|---|---|---|---|`);
+  for (const l of planRows) {
+    md.push(
+      `| ${origins[l.chainId]?.name ?? l.chainId} | ${l.eventName} | #${l.args.id} | ${planDetail(l)} | ${link(l.chainId, l.transactionHash)} |`
+    );
+  }
+  if (planRows.length === 0) md.push(`| — | — | — | no plan events in the last ${PLAN_BLOCKS} blocks | — |`);
 }
 md.push(``);
 md.push(`## Live subscriptions (Reactive RPC \`rnk_getFilters\`)`);

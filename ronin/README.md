@@ -36,6 +36,10 @@ No keeper bot. The AI is woken by the Reactive contract and gated by the vault.
 | 9 | **Self-funding**: on every CRON tick the Reactive contract tops its own reserves up (`depositTo`) before they run dry, because execution stops while debt > 0 | Reactive economy (reserves, debt) |
 | 10 | **Machine-readable proof**: events carry `LogRecord.txHash` (origin tx); `proof.js` joins it with the Reactive tx and `getCallbacks(reactiveTx)` (destination tx) and writes `PROOF.md` | `LogRecord`, system contract `getCallbacks`, `rnk_getFilters` |
 | 11 | **Autonomous ops agent** (`ops.js`) watches balance / reserves / debt of the Reactive contract, vaults and requesters, tops up with `depositTo`, and attaches Reactive MCP `get_rc_health` reports | Reactive economy + Reactive MCP |
+| 12 | **Standing orders**: choose `YIELD_ONLY` (principal untouched) or `YIELD_THEN_PRINCIPAL`; `Vault.PlanCreated` is enough for the RSC to schedule recurring payouts from CRON, round-robin, at most 5 per tick (~747k gas measured with 5 due plans) | event-driven scheduling, bounded CRON compute |
+| 13 | **Ack + retry**: every plan payout and ACT rebalance is recorded in flight; `PlanExecuted`/`PlanSkipped` and `Rebalanced`/`RebalanceSkipped` clear it. No ack after `retryAfter` re-sends, max 3 attempts, then `ActionStuck` (never retries a stale verdict) | subscriptions to your own outputs |
+
+Standing orders: choose **YIELD_ONLY** (principal untouched; a period with no yield is skipped and does not consume a payment) or **YIELD_THEN_PRINCIPAL** (pays from yield first, then principal; an unfunded period counts as a payment). `createPlan(payee, amount, period, count, mode)`; `period >= minPeriod` (default 120s); 1..365 payments. `YIELD_ONLY` plans expire after `maxSkips` (default 12) consecutive empty periods. `costBasis` tracks each depositor's principal pro-rata on deposits, withdrawals and share transfers, so `yieldAvailable(owner)` is real yield. Payouts keep working while deposits are paused.
 
 Honest limits: Reactive moves *messages*, not tokens. Funds never cross chains here. Rebalancing happens between pools
 on one chain, and the omnichain layer is protection plus a yield signal.
@@ -85,6 +89,10 @@ is deterministic (Aave testnet rates rarely move on their own); label it as such
 Profit gate: `cast send $VAULT "setMinAnnualGain(uint256)" 1000000` makes the vault skip any move that would earn less
 than 1 USDC a year (emits `RebalanceSkipped`).
 
+Standing-order admin knobs: `setMinPeriod(uint32)` (default 120s), `setMaxSkips(uint16)` (default 12), and on the RSC
+`setRetryParams(retryAfter, maxVerdictAge)` (defaults 360s and 900s; a rebalance is never retried after the verdict
+is older than `maxVerdictAge`).
+
 ## Deploy (order matters: the destination contracts need the Reactive contract's address)
 
 ```bash
@@ -116,6 +124,10 @@ Unichain Sepolia all run Cancun, so the same setting is safe for every deploy ta
 
 ## Demo script (save every tx hash: origin, Reactive, destination)
 
+Set `PAYEE` to a second wallet before running section E.
+
+
+
 ```bash
 cd ai-service && npm start     # second terminal; it only reacts to DecisionRequested
 
@@ -137,6 +149,29 @@ cast send $BASE_POOL_A "setRate(uint256,uint256)" 500 4000 --rpc-url $BASE_SEPOL
 # D. Dynamic subscription: deploy a third MockLendingPool, then
 cast send $BASE_VAULT "addPool(address)" $NEW_POOL --rpc-url $BASE_SEPOLIA_RPC --private-key $DEPLOYER_PK
 # Reactive emits PoolWatched by itself, no owner call needed
+
+# E0. Prepay callback fees on the destination chains. Callbacks are billed to the recipient in the
+#     destination chain's native token; with zero reserves the network accepts the request but never
+#     delivers it (you only see ActionRetried, then ActionStuck).
+cast send 0x476F44b11F5C942c58f4c8E3d0300E5710743585 "depositTo(address)" $BASE_VAULT \
+  --value 0.002ether --rpc-url $BASE_SEPOLIA_RPC --private-key $DEPLOYER_PK
+cast send 0x775c9B990ADe401060B78D0e98684eEf8d2466C1 "depositTo(address)" $UNICHAIN_VAULT \
+  --value 0.002ether --rpc-url $UNICHAIN_SEPOLIA_RPC --private-key $DEPLOYER_PK
+
+# E. Standing orders. Mode: 0 = YIELD_ONLY, 1 = YIELD_THEN_PRINCIPAL.
+#    YIELD_ONLY pays only from yield; YIELD_THEN_PRINCIPAL pays immediately (yield first).
+cast send $BASE_VAULT "createPlan(address,uint128,uint32,uint16,uint8)" $PAYEE 1000000 120 3 0 \
+  --rpc-url $BASE_SEPOLIA_RPC --private-key $DEPLOYER_PK
+cast send $BASE_VAULT "createPlan(address,uint128,uint32,uint16,uint8)" $PAYEE 1000000 120 3 1 \
+  --rpc-url $BASE_SEPOLIA_RPC --private-key $DEPLOYER_PK
+# Then send nothing: on each CRON tick the RSC calls executePlan and the vault emits PlanExecuted.
+# Watch PlanCreated / PlanExecuted / PlanSkipped on the vault, and ActionRetried / ActionStuck on Lasna.
+
+# E2. Faster retry demo (3 CRON ticks is ~6 min by default; lower it for a recording):
+cast send $RSC "setRetryParams(uint256,uint256)" 120 900 --rpc-url $LASNA_RPC --private-key $DEPLOYER_PK
+# The retry path needs a callback that produces no ack. The forge suite covers it deterministically
+# (`test_missingAckRetriesThenStuck`); on a live chain use a throwaway vault harness that reverts.
+# Do not add a revert switch to the production vault.
 ```
 
 ## Reactive's own tooling (use it, it saves hours)
@@ -159,16 +194,20 @@ cd ai-service && npm run ops          # or: npm run ops:once
 
 **Generate the submission evidence** after running the demo (origin tx, Reactive tx, destination tx, latency per reaction):
 ```bash
-cd ai-service && npm run proof        # writes ai-service/PROOF.md
+cd ai-service && BASE_VAULT=$BASE_VAULT UNICHAIN_VAULT=$UNICHAIN_VAULT npm run proof   # writes ai-service/PROOF.md
 ```
+With the vault addresses set, the report also lists `PlanCreated` / `PlanExecuted` / `PlanSkipped` events and the
+`ActionRetried` / `ActionStuck` counts.
 
 Economy rules that shaped the design: execution stops while debt > 0; reverted `react()` and failed callbacks are still
 charged; callbacks under 100,000 gas are ignored; a Reactive transaction is capped at 900,000 gas; Omni blocks are
 about 1s with instant finality (no reorgs, so the latency numbers are real).
 
 ## Operating costs
-- Callbacks are billed to the recipient (vault, requester) in the destination chain's ETH. Top up with
-  `cast send <addr> --value 0.005ether` and call `coverDebt()` if callbacks stop.
+- Callbacks are billed to the recipient (vault, requester) in the destination chain's ETH. Prepay reserves at the
+  destination callback proxy with `cast send <proxy> "depositTo(address)" <addr> --value 0.01ether`; a recipient with
+  no reserves still gets its callback requests accepted but **never delivered**. You can also top up the contract
+  itself (`cast send <addr> --value 0.005ether`) and call `coverDebt()` if callbacks stop.
 - The Reactive contract pays in lREACT. **CRON bills on every tick** (~2 min). Turn it off when not demoing:
   `cast send $RSC "setCron(bool)" false --rpc-url $LASNA_RPC --private-key $DEPLOYER_PK`
 - The Reactive contract is verified with `forge verify-contract --verifier sourcify --chain-id 5318007 <addr> RoninReactive`.

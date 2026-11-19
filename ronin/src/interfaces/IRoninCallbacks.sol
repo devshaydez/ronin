@@ -16,6 +16,7 @@ interface IVaultCallbacks {
         uint256 globalBestBps,
         uint256 globalBestChainId
     ) external;
+    function executePlan(address reactive_, uint256 id) external;
 }
 
 interface IRequesterCallbacks {

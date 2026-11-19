@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.29;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
 import {ISystemContract} from "@reactive/src/interfaces/ISystemContract.sol";
 import {IReactive} from "@reactive/src/interfaces/IReactive.sol";
 import {RoninReactive} from "../src/RoninReactive.sol";
@@ -137,8 +137,8 @@ contract RoninReactiveTest is Test {
     // ───────────── tests ─────────────
 
     function test_subscribesToEverythingOnConfigure() public view {
-        // cron(1) + vault x3 + registry + requester + 2 pools = 8
-        assertEq(MockSystem(SYSTEM).subs(), 8);
+        // cron(1) + vault (rebalanced, skipped, exit, poolAdded, 5 plan events = 9) + registry + requester + 2 pools = 14
+        assertEq(MockSystem(SYSTEM).subs(), 14);
     }
 
     function test_emaAndSpikeComputedOnChain() public {
@@ -325,6 +325,206 @@ contract RoninReactiveTest is Test {
         uint256 rateTopic = rsc.RATE_TOPIC();
         vm.expectRevert();
         rsc.react(_log(BASE, poolA, rateTopic, uint256(uint160(poolA)), 0, 2, abi.encode(uint256(1), uint256(1))));
+    }
+
+    // ───────────── standing orders + ack/retry ─────────────
+
+    event ActionRetried(uint256 indexed chainId, uint8 kind, uint256 indexed id, uint8 attempt, uint256 originTx);
+    event ActionStuck(uint256 indexed chainId, uint8 kind, uint256 indexed id, uint256 originTx);
+
+    function _tick() internal {
+        _react(_log(block.chainid, rsc.LEGACY_SYSTEM(), rsc.CRON100_TOPIC(), 0, 0, 1, ""));
+    }
+
+    function _planCreated(
+        uint256 chainId,
+        address vault,
+        uint256 id,
+        address payee,
+        uint32 period,
+        uint64 nextDue,
+        uint16 remaining,
+        uint8 mode
+    ) internal {
+        IReactive.LogRecord memory l = _log(
+            chainId,
+            vault,
+            rsc.PLAN_CREATED_TOPIC(),
+            id,
+            uint256(uint160(payee)),
+            4,
+            abi.encode(uint128(10e6), period, nextDue, remaining, mode)
+        );
+        l.topic3 = uint256(uint160(payee));
+        _react(l);
+    }
+
+    function _planExecuted(uint256 chainId, address vault, uint256 id, uint64 nextDue, uint16 remaining) internal {
+        _react(
+            _log(
+                chainId,
+                vault,
+                rsc.PLAN_EXECUTED_TOPIC(),
+                id,
+                uint256(uint160(makeAddr("payee"))),
+                3,
+                abi.encode(uint256(10e6), uint256(10e6), uint256(0), nextDue, remaining)
+            )
+        );
+    }
+
+    function _planSkipped(uint256 chainId, address vault, uint256 id) internal {
+        _react(_log(chainId, vault, rsc.PLAN_SKIPPED_TOPIC(), id, 0, 2, abi.encode("no yield yet")));
+    }
+
+    function _countLogs(Vm.Log[] memory logs, bytes32 topic0) internal pure returns (uint256 n) {
+        for (uint256 i = 0; i < logs.length; i++) if (logs[i].topics[0] == topic0) n++;
+    }
+
+    function test_planTopicHashesMatchVaultEvents() public view {
+        assertEq(rsc.PLAN_CREATED_TOPIC(), uint256(keccak256("PlanCreated(uint256,address,address,uint128,uint32,uint64,uint16,uint8)")));
+        assertEq(rsc.PLAN_EXECUTED_TOPIC(), uint256(keccak256("PlanExecuted(uint256,address,uint256,uint256,uint256,uint64,uint16)")));
+        assertEq(rsc.PLAN_SKIPPED_TOPIC(), uint256(keccak256("PlanSkipped(uint256,string)")));
+        assertEq(rsc.PLAN_CANCELLED_TOPIC(), uint256(keccak256("PlanCancelled(uint256)")));
+        assertEq(rsc.PLAN_EXPIRED_TOPIC(), uint256(keccak256("PlanExpired(uint256)")));
+        assertEq(rsc.REBALANCE_SKIPPED_TOPIC(), uint256(keccak256("RebalanceSkipped(uint256,uint256,uint256)")));
+    }
+
+    function test_planCreatedIsStored() public {
+        uint64 due = uint64(block.timestamp + 120);
+        _planCreated(BASE, vaultB, 7, makeAddr("payee"), 120, due, 3, 0);
+        assertEq(rsc.planCount(), 1);
+        (uint256 chainId, uint256 planId, uint64 nextDue, uint16 remaining, bool active, uint8 attempts) = rsc.planAt(0);
+        assertEq(chainId, BASE);
+        assertEq(planId, 7);
+        assertEq(nextDue, due);
+        assertEq(remaining, 3);
+        assertTrue(active);
+        assertEq(attempts, 0);
+    }
+
+    function test_cronFiresDuePlanOnly() public {
+        uint64 due = uint64(block.timestamp + 120);
+        _planCreated(BASE, vaultB, 1, makeAddr("payee"), 120, due, 3, 1);
+        _tick();
+        assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 0); // not due yet
+
+        vm.warp(due);
+        _tick();
+        assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 1);
+        (, , , , , uint8 attempts) = rsc.planAt(0);
+        assertEq(attempts, 1);
+    }
+
+    function test_planExecutedAckClearsInFlight() public {
+        uint64 due = uint64(block.timestamp);
+        _planCreated(BASE, vaultB, 1, makeAddr("payee"), 120, due, 3, 1);
+        _tick();
+        assertGt(rsc.planInfo(BASE, 1).inFlightSince, 0);
+
+        _planExecuted(BASE, vaultB, 1, due + 120, 2);
+        (uint256 chainId, uint256 planId, uint64 nextDue, uint16 remaining, bool active, uint8 attempts) = rsc.planAt(0);
+        assertEq(chainId, BASE);
+        assertEq(planId, 1);
+        assertEq(nextDue, due + 120);
+        assertEq(remaining, 2);
+        assertTrue(active);
+        assertEq(attempts, 0);
+        assertEq(rsc.planInfo(BASE, 1).inFlightSince, 0);
+    }
+
+    function test_planSkippedAckAdvancesAndClearsInFlight() public {
+        uint64 due = uint64(block.timestamp);
+        _planCreated(BASE, vaultB, 1, makeAddr("payee"), 120, due, 3, 1); // YIELD_THEN_PRINCIPAL
+        _tick();
+        _planSkipped(BASE, vaultB, 1);
+        (, , uint64 nextDue, uint16 remaining, , uint8 attempts) = rsc.planAt(0);
+        assertEq(nextDue, due + 120);
+        assertEq(remaining, 2); // a skip consumes a payment in this mode
+        assertEq(attempts, 0);
+        assertEq(rsc.planInfo(BASE, 1).inFlightSince, 0);
+    }
+
+    function test_missingAckRetriesThenStuck() public {
+        uint256 t0 = block.timestamp;
+        _planCreated(BASE, vaultB, 1, makeAddr("payee"), 120, uint64(t0), 3, 1);
+
+        _tick(); // attempt 1
+        vm.warp(t0 + 360);
+        vm.recordLogs();
+        _tick(); // retry 2
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(_countLogs(logs, keccak256("ActionRetried(uint256,uint8,uint256,uint8,uint256)")), 1);
+
+        vm.warp(t0 + 720);
+        _tick(); // retry 3
+        assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 3);
+
+        vm.warp(t0 + 1080);
+        vm.recordLogs();
+        _tick(); // stuck
+        logs = vm.getRecordedLogs();
+        assertEq(_countLogs(logs, keccak256("ActionStuck(uint256,uint8,uint256,uint256)")), 1);
+        assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 3);
+        assertEq(rsc.planInfo(BASE, 1).inFlightSince, 0);
+        assertTrue(rsc.planInfo(BASE, 1).stuck);
+    }
+
+    function test_staleVerdictIsNotRetried() public {
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 900, 3500);
+        _verdict(BASE, regB, 1, poolB, 1, 1);
+        assertEq(_countSel(vaultB, IVaultCallbacks.rebalance.selector), 1);
+
+        uint256 t0 = block.timestamp;
+        vm.warp(t0 + 1000); // > retryAfter (360) and > maxVerdictAge (900)
+        vm.recordLogs();
+        _tick();
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(_countLogs(logs, keccak256("ActionStuck(uint256,uint8,uint256,uint256)")), 1);
+        assertEq(_countSel(vaultB, IVaultCallbacks.rebalance.selector), 1); // no re-send
+    }
+
+    function test_rebalanceSkippedAckClearsAction() public {
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 900, 3500);
+        _verdict(BASE, regB, 1, poolB, 1, 1);
+        _react(_log(BASE, vaultB, rsc.REBALANCE_SKIPPED_TOPIC(), 1, 0, 2, abi.encode(uint256(0), uint256(0))));
+
+        uint256 t0 = block.timestamp;
+        vm.warp(t0 + 400);
+        _tick();
+        assertEq(_countSel(vaultB, IVaultCallbacks.rebalance.selector), 1); // cleared, no retry
+    }
+
+    function test_boundedPlanLoopRespectsPerTickCap() public {
+        for (uint256 i = 1; i <= 10; i++) {
+            _planCreated(BASE, vaultB, i, makeAddr("payee"), 120, uint64(block.timestamp), 3, 1);
+        }
+        _tick();
+        assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 5);
+
+        _tick(); // the in-flight 5 are waiting; the cursor reaches plans 6..10
+        assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 10);
+    }
+
+    function test_gasCronTickWithMaxPlans() public {
+        for (uint256 i = 1; i <= 5; i++) {
+            _planCreated(BASE, vaultB, i, makeAddr("payee"), 120, uint64(block.timestamp), 3, 1);
+        }
+        uint256 g = gasleft();
+        _tick();
+        uint256 used = g - gasleft();
+        emit log_named_uint("cron tick gas with 5 due plans", used);
+        assertLt(used, 900_000);
+        assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 5);
+    }
+
+    function test_unknownPlanEventDoesNotRevert() public {
+        _planExecuted(BASE, vaultB, 99, 1234, 2);
+        assertEq(rsc.planCount(), 1);
+        _planSkipped(BASE, vaultB, 12345); // never seen: ignored, no revert
+        assertEq(rsc.planCount(), 1);
     }
 
     function test_unknownChainLogsIgnored() public {

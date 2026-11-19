@@ -34,6 +34,16 @@ contract RoninReactive is AbstractReactive {
     uint256 public constant REBALANCED_TOPIC = uint256(keccak256("Rebalanced(uint256,address,uint256,uint256)"));
     uint256 public constant EXIT_TOPIC = uint256(keccak256("EmergencyExit(address,uint256)"));
     uint256 public constant POOL_ADDED_TOPIC = uint256(keccak256("PoolAdded(address)"));
+    // Standing-order events. The PlanCreated signature includes the payout mode (enum = uint8).
+    uint256 public constant PLAN_CREATED_TOPIC =
+        uint256(keccak256("PlanCreated(uint256,address,address,uint128,uint32,uint64,uint16,uint8)"));
+    uint256 public constant PLAN_EXECUTED_TOPIC =
+        uint256(keccak256("PlanExecuted(uint256,address,uint256,uint256,uint256,uint64,uint16)"));
+    uint256 public constant PLAN_SKIPPED_TOPIC = uint256(keccak256("PlanSkipped(uint256,string)"));
+    uint256 public constant PLAN_CANCELLED_TOPIC = uint256(keccak256("PlanCancelled(uint256)"));
+    uint256 public constant PLAN_EXPIRED_TOPIC = uint256(keccak256("PlanExpired(uint256)"));
+    uint256 public constant REBALANCE_SKIPPED_TOPIC =
+        uint256(keccak256("RebalanceSkipped(uint256,uint256,uint256)"));
     // Aave V3 Pool event (topic0 should equal 0x804c9b842b2748a22bb64b345453a3de7ca54a6ca45ce00d415894979e22897a;
     // a unit test asserts it).
     uint256 public constant AAVE_RESERVE_TOPIC =
@@ -62,6 +72,36 @@ contract RoninReactive is AbstractReactive {
         uint256 sentLocal; // last omni signal values sent (throttling)
         uint256 sentGlobal;
         uint256 sentBestChain;
+    }
+
+    /// @notice Mirror of a vault plan, kept entirely from events (the RSC never reads origin state).
+    struct PlanState {
+        uint256 originTx; // PlanCreated's tx, copied into retry/stuck events
+        uint64 nextDue;
+        uint32 period;
+        uint16 remaining;
+        uint8 mode; // 0 = YIELD_ONLY, 1 = YIELD_THEN_PRINCIPAL
+        uint8 attempts;
+        bool active;
+        bool known;
+        bool stuck;
+        uint64 inFlightSince;
+    }
+
+    /// @notice A rebalance callback waiting for its Rebalanced / RebalanceSkipped ack.
+    struct RebalanceAction {
+        uint256 id;
+        address target;
+        uint64 verdictAt;
+        uint64 lastSentAt;
+        uint8 attempts;
+        uint256 originTx;
+        bool pending;
+    }
+
+    struct PlanRef {
+        uint256 chainId;
+        uint256 planId;
     }
 
     struct PoolState {
@@ -100,6 +140,22 @@ contract RoninReactive is AbstractReactive {
     mapping(bytes32 => uint256) public verdictReqTs; // (chain, verdictId) => timestamp of the originating request
     mapping(bytes32 => address) public aaveAdapter; // (chain, aavePool, reserve) => vault adapter fed by that reserve
 
+    // Standing orders: plans are processed round-robin, at most MAX_PLANS_PER_TICK per cron tick.
+    // 5 keeps a worst-case tick under the 900k react() cap even when every plan needs a callback
+    // (measured in test_gasCronTickWithMaxPlans; 8 plans was ~1.13M in the local harness).
+    uint256 public constant MAX_PLANS_PER_TICK = 5;
+    uint256 public constant MAX_ATTEMPTS = 3;
+    PlanRef[] internal planRefs;
+    mapping(bytes32 => PlanState) internal planState;
+    mapping(bytes32 => bool) internal planSeen;
+    mapping(bytes32 => RebalanceAction) internal rebalanceAction;
+    mapping(uint256 => bytes32[]) internal pendingRebalances; // chainId => action keys
+    uint256 public planCursor;
+    /// @notice Seconds without an ack before a callback is re-sent (default ~3 CRON ticks).
+    uint256 public retryAfter = 360;
+    /// @notice Rebalances are never retried after the verdict is this old (matches the vault default).
+    uint256 public maxVerdictAge = 15 minutes;
+
     // ───── events (these are the audit trail / demo evidence on Lasna) ─────
     event ChainConfigured(uint256 indexed chainId, address vault, address requester, address registry);
     event AaveFeedConfigured(uint256 indexed chainId, address indexed aavePool, address indexed reserve, address adapter);
@@ -131,6 +187,9 @@ contract RoninReactive is AbstractReactive {
     event StaleHealed(uint256 indexed chainId);
     event OmniSignalSent(uint256 indexed chainId, uint256 localBestBps, uint256 globalBestBps, uint256 globalBestChainId);
     event Tick(uint256 indexed n);
+    event ActionRetried(uint256 indexed chainId, uint8 kind, uint256 indexed id, uint8 attempt, uint256 originTx);
+    event ActionStuck(uint256 indexed chainId, uint8 kind, uint256 indexed id, uint256 originTx);
+    event PlanScheduled(uint256 indexed chainId, uint256 indexed planId, uint64 nextDue, uint16 remaining);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "only owner");
@@ -176,8 +235,14 @@ contract RoninReactive is AbstractReactive {
         chainIds.push(chainId);
 
         _sub(chainId, vault, REBALANCED_TOPIC);
+        _sub(chainId, vault, REBALANCE_SKIPPED_TOPIC);
         _sub(chainId, vault, EXIT_TOPIC);
         _sub(chainId, vault, POOL_ADDED_TOPIC);
+        _sub(chainId, vault, PLAN_CREATED_TOPIC);
+        _sub(chainId, vault, PLAN_EXECUTED_TOPIC);
+        _sub(chainId, vault, PLAN_SKIPPED_TOPIC);
+        _sub(chainId, vault, PLAN_CANCELLED_TOPIC);
+        _sub(chainId, vault, PLAN_EXPIRED_TOPIC);
         if (registry != address(0)) _sub(chainId, registry, VERDICT_TOPIC);
         if (requester != address(0)) _sub(chainId, requester, REQUEST_TOPIC);
         for (uint256 i = 0; i < pools_.length; i++) {
@@ -263,6 +328,18 @@ contract RoninReactive is AbstractReactive {
             emit RequestObserved(chainId, log_.topic1, log_.txHash);
         } else if (log_.topic0 == REBALANCED_TOPIC && log_.opCode == 3 && src == c.vault) {
             _onRebalanced(chainId, log_);
+        } else if (log_.topic0 == REBALANCE_SKIPPED_TOPIC && log_.opCode == 2 && src == c.vault) {
+            _clearRebalance(chainId, log_.topic1);
+        } else if (log_.topic0 == PLAN_CREATED_TOPIC && log_.opCode == 4 && src == c.vault) {
+            _onPlanCreated(chainId, log_);
+        } else if (log_.topic0 == PLAN_EXECUTED_TOPIC && log_.opCode == 3 && src == c.vault) {
+            _onPlanExecuted(chainId, log_);
+        } else if (log_.topic0 == PLAN_SKIPPED_TOPIC && log_.opCode == 2 && src == c.vault) {
+            _onPlanSkipped(chainId, log_);
+        } else if (log_.topic0 == PLAN_CANCELLED_TOPIC && log_.opCode == 2 && src == c.vault) {
+            _onPlanClosed(chainId, log_.topic1);
+        } else if (log_.topic0 == PLAN_EXPIRED_TOPIC && log_.opCode == 2 && src == c.vault) {
+            _onPlanClosed(chainId, log_.topic1);
         } else if (log_.topic0 == EXIT_TOPIC && log_.opCode == 2 && src == c.vault) {
             _onExit(chainId, log_);
         } else if (log_.topic0 == POOL_ADDED_TOPIC && log_.opCode == 2 && src == c.vault) {
@@ -377,6 +454,7 @@ contract RoninReactive is AbstractReactive {
             return;
         }
         emit RebalanceRequested(chainId, id, target, gap);
+        _startRebalance(chainId, id, target, log_.txHash);
         _cb(chainId, c.vault, abi.encodeCall(IVaultCallbacks.rebalance, (address(0), id, target)));
     }
 
@@ -385,8 +463,89 @@ contract RoninReactive is AbstractReactive {
         uint256 verdictId = log_.topic1;
         c.lastRebalanceAt = block.timestamp;
         c.rebalances++;
+        _clearRebalance(chainId, verdictId);
         uint256 start = verdictReqTs[_key(chainId, verdictId)];
         emit LoopClosed(chainId, verdictId, start == 0 ? 0 : block.timestamp - start, log_.txHash);
+    }
+
+    // ───────────────────────── Standing orders ─────────────────────────
+
+    function _onPlanCreated(uint256 chainId, LogRecord memory log_) internal {
+        uint256 id = log_.topic1;
+        (, uint32 period, uint64 nextDue, uint16 remaining, uint8 mode) =
+            abi.decode(log_.data, (uint128, uint32, uint64, uint16, uint8));
+        PlanState storage ps = _ensurePlan(chainId, id, log_.txHash);
+        ps.nextDue = nextDue;
+        ps.period = period;
+        ps.remaining = remaining;
+        ps.mode = mode;
+        ps.active = true;
+        ps.stuck = false;
+        ps.inFlightSince = 0;
+        ps.attempts = 0;
+        emit PlanScheduled(chainId, id, nextDue, remaining);
+    }
+
+    function _onPlanExecuted(uint256 chainId, LogRecord memory log_) internal {
+        uint256 id = log_.topic1;
+        (,,, uint64 nextDue, uint16 remaining) = abi.decode(log_.data, (uint256, uint256, uint256, uint64, uint16));
+        PlanState storage ps = _ensurePlan(chainId, id, 0);
+        ps.nextDue = nextDue;
+        ps.remaining = remaining;
+        ps.active = remaining > 0;
+        ps.stuck = false;
+        ps.inFlightSince = 0;
+        ps.attempts = 0;
+    }
+
+    function _onPlanSkipped(uint256 chainId, LogRecord memory log_) internal {
+        PlanState storage ps = planState[_planKey(chainId, log_.topic1)];
+        if (!ps.known) return; // event for a plan we never saw created: ignore, never revert
+        ps.inFlightSince = 0;
+        ps.attempts = 0;
+        ps.nextDue = uint64(uint256(ps.nextDue) + ps.period);
+        // YIELD_THEN_PRINCIPAL consumes a payment when it cannot pay; YIELD_ONLY postpones it.
+        if (ps.mode == 1 && ps.remaining > 0) {
+            ps.remaining--;
+            if (ps.remaining == 0) ps.active = false;
+        }
+    }
+
+    function _onPlanClosed(uint256 chainId, uint256 id) internal {
+        PlanState storage ps = planState[_planKey(chainId, id)];
+        if (!ps.known) return;
+        ps.active = false;
+        ps.inFlightSince = 0;
+        ps.attempts = 0;
+    }
+
+    function _ensurePlan(uint256 chainId, uint256 id, uint256 originTx) internal returns (PlanState storage ps) {
+        ps = planState[_planKey(chainId, id)];
+        if (!ps.known) {
+            ps.known = true;
+            planRefs.push(PlanRef(chainId, id));
+        }
+        if (originTx != 0) ps.originTx = originTx;
+    }
+
+    function _startRebalance(uint256 chainId, uint256 verdictId, address target, uint256 originTx) internal {
+        bytes32 key = _key(chainId, verdictId);
+        RebalanceAction storage a = rebalanceAction[key];
+        if (!a.pending) {
+            a.pending = true;
+            a.id = verdictId;
+            a.target = target;
+            a.verdictAt = uint64(block.timestamp);
+            a.originTx = originTx;
+            a.attempts = 1;
+            a.lastSentAt = uint64(block.timestamp);
+            pendingRebalances[chainId].push(key);
+        }
+    }
+
+    function _clearRebalance(uint256 chainId, uint256 verdictId) internal {
+        RebalanceAction storage a = rebalanceAction[_key(chainId, verdictId)];
+        if (a.pending) a.pending = false;
     }
 
     function _onExit(uint256 chainId, LogRecord memory log_) internal {
@@ -442,6 +601,72 @@ contract RoninReactive is AbstractReactive {
             if (rescoreEveryTicks != 0 && ticks % rescoreEveryTicks == 0) {
                 (address best,, uint256 gap) = _bestAndGap(id);
                 if (best != address(0)) _maybeRequest(id, best, gap, 3);
+            }
+        }
+
+        // Standing orders and retries share the same bounded budget, so one react stays well under 900k gas.
+        _processPlans();
+        _retryRebalances();
+    }
+
+    /// @dev Round-robin over all plans, at most MAX_PLANS_PER_TICK examined per tick. A due plan gets one
+    ///      callback; an in-flight one is re-sent after retryAfter, at most MAX_ATTEMPTS times.
+    function _processPlans() internal {
+        uint256 n = planRefs.length;
+        if (n == 0) return;
+        uint256 start = planCursor;
+        uint256 scanned;
+        for (; scanned < n && scanned < MAX_PLANS_PER_TICK; scanned++) {
+            PlanRef storage ref = planRefs[(start + scanned) % n];
+            PlanState storage ps = planState[_planKey(ref.chainId, ref.planId)];
+            if (!ps.active || ps.stuck) continue;
+            Chain storage c = chains[ref.chainId];
+            if (!c.exists) continue;
+
+            if (ps.inFlightSince != 0) {
+                if (block.timestamp < uint256(ps.inFlightSince) + retryAfter) continue;
+                if (ps.attempts >= MAX_ATTEMPTS) {
+                    ps.stuck = true;
+                    ps.inFlightSince = 0;
+                    emit ActionStuck(ref.chainId, 1, ref.planId, ps.originTx);
+                    continue;
+                }
+                ps.attempts++;
+                ps.inFlightSince = uint64(block.timestamp);
+                emit ActionRetried(ref.chainId, 1, ref.planId, ps.attempts, ps.originTx);
+                _cb(ref.chainId, c.vault, abi.encodeCall(IVaultCallbacks.executePlan, (address(0), ref.planId)));
+                continue;
+            }
+
+            if (block.timestamp < ps.nextDue) continue;
+            ps.inFlightSince = uint64(block.timestamp);
+            ps.attempts = 1;
+            _cb(ref.chainId, c.vault, abi.encodeCall(IVaultCallbacks.executePlan, (address(0), ref.planId)));
+        }
+        planCursor = (start + scanned) % n;
+    }
+
+    function _retryRebalances() internal {
+        uint256 budget = MAX_PLANS_PER_TICK;
+        for (uint256 i = 0; i < chainIds.length && budget > 0; i++) {
+            uint256 chainId = chainIds[i];
+            Chain storage c = chains[chainId];
+            bytes32[] storage keys = pendingRebalances[chainId];
+            for (uint256 j = 0; j < keys.length && budget > 0; j++) {
+                RebalanceAction storage a = rebalanceAction[keys[j]];
+                if (!a.pending) continue;
+                if (block.timestamp < uint256(a.lastSentAt) + retryAfter) continue;
+                budget--;
+                // A verdict the vault would now reject is never worth re-sending.
+                if (block.timestamp > uint256(a.verdictAt) + maxVerdictAge || a.attempts >= MAX_ATTEMPTS) {
+                    a.pending = false;
+                    emit ActionStuck(chainId, 2, a.id, a.originTx);
+                    continue;
+                }
+                a.attempts++;
+                a.lastSentAt = uint64(block.timestamp);
+                emit ActionRetried(chainId, 2, a.id, a.attempts, a.originTx);
+                _cb(chainId, c.vault, abi.encodeCall(IVaultCallbacks.rebalance, (address(0), a.id, a.target)));
             }
         }
     }
@@ -586,6 +811,10 @@ contract RoninReactive is AbstractReactive {
         return keccak256(abi.encode(chainId, id));
     }
 
+    function _planKey(uint256 chainId, uint256 id) private pure returns (bytes32) {
+        return keccak256(abi.encode(chainId, id));
+    }
+
     function _absDiff(uint256 a, uint256 b) private pure returns (uint256) {
         return a > b ? a - b : b - a;
     }
@@ -606,5 +835,30 @@ contract RoninReactive is AbstractReactive {
 
     function riskScore(uint256 chainId, address p) external view returns (uint256) {
         return _risk(pool[chainId][p]);
+    }
+
+    function planCount() external view returns (uint256) {
+        return planRefs.length;
+    }
+
+    function planAt(uint256 i)
+        external
+        view
+        returns (uint256 chainId, uint256 planId, uint64 nextDue, uint16 remaining, bool active, uint8 attempts)
+    {
+        PlanRef storage ref = planRefs[i];
+        PlanState storage ps = planState[_planKey(ref.chainId, ref.planId)];
+        return (ref.chainId, ref.planId, ps.nextDue, ps.remaining, ps.active, ps.attempts);
+    }
+
+    function planInfo(uint256 chainId, uint256 id) external view returns (PlanState memory) {
+        return planState[_planKey(chainId, id)];
+    }
+
+    function setRetryParams(uint256 retryAfter_, uint256 maxVerdictAge_) external onlyOwner {
+        require(retryAfter_ >= 30, "retry too short");
+        require(maxVerdictAge_ >= 60, "verdict age too short");
+        retryAfter = retryAfter_;
+        maxVerdictAge = maxVerdictAge_;
     }
 }
