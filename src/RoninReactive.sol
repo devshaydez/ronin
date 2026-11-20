@@ -72,6 +72,18 @@ contract RoninReactive is AbstractReactive {
         uint256 sentLocal; // last omni signal values sent (throttling)
         uint256 sentGlobal;
         uint256 sentBestChain;
+        uint64 requestWindowStart; // start of the current AI-request rate-limit hour
+        uint16 requestsInWindow; // AI requests sent in that hour (cap: maxRequestsPerHour)
+    }
+
+    /// @notice What we asked the AI about last time for a (chain, pool) pair, so an unchanged pair is not
+    ///         asked again while the backoff is running.
+    struct RequestGate {
+        uint64 at; // when the pair was last requested (or last ignored / skipped)
+        address basePool; // the pool the gap was measured against
+        uint32 targetRateBps; // target pool rate at that moment
+        uint32 baseRateBps; // base pool rate at that moment
+        bool armed;
     }
 
     /// @notice Mirror of a vault plan, kept entirely from events (the RSC never reads origin state).
@@ -123,6 +135,11 @@ contract RoninReactive is AbstractReactive {
     uint256 public spikeBps; // |rate - ema| that wakes the AI
     uint256 public staleAfter; // seconds of silence before a chain is considered stale
     uint256 public requestCooldown; // min seconds between AI requests per chain
+    /// @notice After a request for a (chain, pool) pair, that pair is not asked again until one of the two
+    ///         rates moves by spikeBps, or this many seconds pass. Default 10 minutes.
+    uint256 public requestBackoff = 600;
+    /// @notice Hard cap on AI requests per chain per rolling hour.
+    uint256 public maxRequestsPerHour = 12;
     uint256 public rescoreEveryTicks; // every N Cron100 ticks, ask the AI for a scheduled re-score (0 = off)
     bool public cronOn = true;
     uint256 public ticks;
@@ -136,6 +153,7 @@ contract RoninReactive is AbstractReactive {
     mapping(uint256 => mapping(address => PoolState)) public pool;
     mapping(uint256 => address[]) internal poolList;
     mapping(uint256 => mapping(address => bool)) public isWatched;
+    mapping(bytes32 => RequestGate) public requestGate; // (chain, pool) => backoff gate
     mapping(bytes32 => uint256) public requestTs; // (chain, requestId) => Reactive-side timestamp
     mapping(bytes32 => uint256) public verdictReqTs; // (chain, verdictId) => timestamp of the originating request
     mapping(bytes32 => address) public aaveAdapter; // (chain, aavePool, reserve) => vault adapter fed by that reserve
@@ -167,6 +185,9 @@ contract RoninReactive is AbstractReactive {
         uint256 indexed chainId, address indexed pool, uint256 rateBps, uint256 emaBps, uint256 utilBps, uint256 originTx
     );
     event DecisionRequestSent(uint256 indexed chainId, address indexed pool, uint256 gapBps, uint256 riskScore, uint8 trigger);
+    /// @notice A candidate request was dropped: "backoff" (same pair, rates unchanged),
+    ///         "cooldown" (per-chain cooldown) or "hourly cap" (maxRequestsPerHour reached).
+    event RequestSuppressed(uint256 indexed chainId, address indexed pool, string reason);
     event RequestObserved(uint256 indexed chainId, uint256 indexed requestId, uint256 originTx);
     event VerdictSeen(
         uint256 indexed chainId, uint256 indexed verdictId, uint8 action, uint256 secsSinceRequest, uint256 originTx
@@ -329,7 +350,10 @@ contract RoninReactive is AbstractReactive {
         } else if (log_.topic0 == REBALANCED_TOPIC && log_.opCode == 3 && src == c.vault) {
             _onRebalanced(chainId, log_);
         } else if (log_.topic0 == REBALANCE_SKIPPED_TOPIC && log_.opCode == 2 && src == c.vault) {
+            // The vault skipped the rebalance: treat the pair like an IGNORE and start its backoff.
+            address target = rebalanceAction[_key(chainId, log_.topic1)].target;
             _clearRebalance(chainId, log_.topic1);
+            if (target != address(0)) _armGate(chainId, target);
         } else if (log_.topic0 == PLAN_CREATED_TOPIC && log_.opCode == 4 && src == c.vault) {
             _onPlanCreated(chainId, log_);
         } else if (log_.topic0 == PLAN_EXECUTED_TOPIC && log_.opCode == 3 && src == c.vault) {
@@ -441,16 +465,23 @@ contract RoninReactive is AbstractReactive {
             _cb(chainId, c.vault, abi.encodeCall(IVaultCallbacks.pauseByVerdict, (address(0), id)));
             return;
         }
-        if (action != 1) return; // IGNORE
+        if (action != 1) {
+            // IGNORE: the AI has now looked at this pair and said no. Hold off on asking again until the
+            // pair's rates actually move (or the backoff expires).
+            _armGate(chainId, target);
+            return;
+        }
 
         PoolState storage s = pool[chainId][target];
         if (!isWatched[chainId][target] || !s.seen || s.tripped) {
             emit VerdictSkipped(chainId, id, "target not eligible");
+            _armGate(chainId, target);
             return;
         }
         uint256 gap = _gapOf(chainId, target);
         if (gap < minGapBps) {
             emit VerdictSkipped(chainId, id, "gap below threshold");
+            _armGate(chainId, target);
             return;
         }
         emit RebalanceRequested(chainId, id, target, gap);
@@ -676,8 +707,21 @@ contract RoninReactive is AbstractReactive {
     function _maybeRequest(uint256 chainId, address best, uint256 gap, uint8 trigger) internal {
         Chain storage c = chains[chainId];
         if (c.requester == address(0)) return;
-        if (block.timestamp < c.lastRequestAt + requestCooldown) return;
+
+        // 1. per-pair backoff: the same pair is not asked twice while its rates sit still.
+        if (_pairBackoff(chainId, best)) {
+            emit RequestSuppressed(chainId, best, "backoff");
+            return;
+        }
+        // 2. per-chain cooldown between any two requests
+        if (block.timestamp < c.lastRequestAt + requestCooldown) {
+            emit RequestSuppressed(chainId, best, "cooldown");
+            return;
+        }
+        // 3. per-chain hourly cap (a stuck pair must not drain the chain's request budget)
+        if (!_chargeRequest(chainId, best)) return;
         c.lastRequestAt = block.timestamp;
+        _armGate(chainId, best);
 
         PoolState storage s = pool[chainId][best];
         uint256 risk = _risk(s);
@@ -690,6 +734,64 @@ contract RoninReactive is AbstractReactive {
                 (address(0), best, s.rateBps, s.emaBps, s.utilBps, gap, risk, trigger)
             )
         );
+    }
+
+    /// @dev True while the pair is inside its backoff AND neither of its two rates has moved by spikeBps.
+    function _pairBackoff(uint256 chainId, address p) internal view returns (bool) {
+        RequestGate storage g = requestGate[_key(chainId, uint256(uint160(p)))];
+        if (!g.armed) return false;
+        if (block.timestamp >= uint256(g.at) + requestBackoff) return false;
+        if (_absDiff(pool[chainId][p].rateBps, g.targetRateBps) >= spikeBps) return false;
+        if (g.basePool != address(0)) {
+            PoolState storage b = pool[chainId][g.basePool];
+            if (b.seen && _absDiff(b.rateBps, g.baseRateBps) >= spikeBps) return false;
+        }
+        return true;
+    }
+
+    /// @dev Snapshot the pair so we can tell later whether anything actually changed.
+    function _armGate(uint256 chainId, address p) internal {
+        PoolState storage s = pool[chainId][p];
+        if (!s.seen) return;
+        (address basePool, uint256 baseRate) = _lowestOther(chainId, p);
+        if (basePool == address(0)) baseRate = 0;
+        RequestGate storage g = requestGate[_key(chainId, uint256(uint160(p)))];
+        g.armed = true;
+        g.at = uint64(block.timestamp);
+        g.basePool = basePool;
+        g.targetRateBps = uint32(s.rateBps);
+        g.baseRateBps = uint32(baseRate);
+    }
+
+    /// @dev Rolling-hour request budget for one chain. Returns false (and logs why) when it is spent.
+    function _chargeRequest(uint256 chainId, address p) internal returns (bool) {
+        Chain storage c = chains[chainId];
+        if (block.timestamp >= uint256(c.requestWindowStart) + 1 hours) {
+            c.requestWindowStart = uint64(block.timestamp);
+            c.requestsInWindow = 0;
+        }
+        if (c.requestsInWindow >= maxRequestsPerHour) {
+            emit RequestSuppressed(chainId, p, "hourly cap");
+            return false;
+        }
+        c.requestsInWindow++;
+        return true;
+    }
+
+    /// @dev Lowest observed rate on the chain other than `target`. `worstPool` is address(0) and `worst` is
+    ///      type(uint256).max when no other pool has reported yet.
+    function _lowestOther(uint256 chainId, address target) internal view returns (address worstPool, uint256 worst) {
+        address[] storage list = poolList[chainId];
+        worst = type(uint256).max;
+        for (uint256 i = 0; i < list.length; i++) {
+            if (list[i] == target) continue;
+            PoolState storage s = pool[chainId][list[i]];
+            if (!s.seen) continue;
+            if (s.rateBps < worst) {
+                worst = s.rateBps;
+                worstPool = list[i];
+            }
+        }
     }
 
     /// @dev Heuristic 0..10000. Recent rate spike and volatility dominate; high utilisation adds to it.
@@ -718,16 +820,9 @@ contract RoninReactive is AbstractReactive {
 
     /// @dev Rate of `target` minus the lowest other observed rate on the chain (0 if not higher).
     function _gapOf(uint256 chainId, address target) internal view returns (uint256) {
-        address[] storage list = poolList[chainId];
         uint256 targetRate = pool[chainId][target].rateBps;
-        uint256 worst = type(uint256).max;
-        for (uint256 i = 0; i < list.length; i++) {
-            if (list[i] == target) continue;
-            PoolState storage s = pool[chainId][list[i]];
-            if (!s.seen) continue;
-            if (s.rateBps < worst) worst = s.rateBps;
-        }
-        if (worst == type(uint256).max || targetRate <= worst) return 0;
+        (address worstPool, uint256 worst) = _lowestOther(chainId, target);
+        if (worstPool == address(0) || targetRate <= worst) return 0;
         return targetRate - worst;
     }
 
@@ -853,6 +948,25 @@ contract RoninReactive is AbstractReactive {
 
     function planInfo(uint256 chainId, uint256 id) external view returns (PlanState memory) {
         return planState[_planKey(chainId, id)];
+    }
+
+    /// @notice Backoff for unchanged pairs and the per-chain hourly request cap.
+    function setBackoff(uint256 requestBackoff_, uint256 maxRequestsPerHour_) external onlyOwner {
+        require(requestBackoff_ >= 30, "backoff too short");
+        require(maxRequestsPerHour_ >= 1 && maxRequestsPerHour_ <= 1000, "bad hourly cap");
+        requestBackoff = requestBackoff_;
+        maxRequestsPerHour = maxRequestsPerHour_;
+    }
+
+    /// @notice Requests sent by `chainId` in the current rate-limit hour.
+    function requestsThisHour(uint256 chainId) external view returns (uint256) {
+        Chain storage c = chains[chainId];
+        if (block.timestamp >= uint256(c.requestWindowStart) + 1 hours) return 0;
+        return c.requestsInWindow;
+    }
+
+    function requestGateOf(uint256 chainId, address p) external view returns (RequestGate memory) {
+        return requestGate[_key(chainId, uint256(uint160(p)))];
     }
 
     function setRetryParams(uint256 retryAfter_, uint256 maxVerdictAge_) external onlyOwner {

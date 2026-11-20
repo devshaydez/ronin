@@ -250,8 +250,9 @@ contract RoninReactiveTest is Test {
         vm.warp(block.timestamp + 1);
         _react(_log(BASE, vaultB, rsc.REBALANCED_TOPIC(), 1, uint256(uint160(poolB)), 3, abi.encode(uint256(1), uint256(2))));
         // Chain struct: vault, requester, registry, exists, stalePaused, omniPaused, lastRateAt,
-        // lastRequestAt, lastRebalanceAt, rebalances, sentLocal, sentGlobal, sentBestChain
-        (,,,,,,,,, uint256 rebalances,,,) = rsc.chains(BASE);
+        // lastRequestAt, lastRebalanceAt, rebalances, sentLocal, sentGlobal, sentBestChain,
+        // requestWindowStart, requestsInWindow
+        (,,,,,,,,, uint256 rebalances,,,,,) = rsc.chains(BASE);
         assertEq(rebalances, 1);
     }
 
@@ -530,5 +531,142 @@ contract RoninReactiveTest is Test {
     function test_unknownChainLogsIgnored() public {
         _rate(777, poolA, 500, 4000);
         assertEq(_cbCount(), 0);
+    }
+
+    // ───────────── request backoff + hourly cap ─────────────
+
+    event RequestSuppressed(uint256 indexed chainId, address indexed pool, string reason);
+
+    function _requestCount() internal view returns (uint256) {
+        return _countSel(reqB, IRequesterCallbacks.requestDecision.selector);
+    }
+
+    function _countSuppressed(Vm.Log[] memory logs, string memory reason) internal pure returns (uint256 n) {
+        bytes32 topic0 = keccak256("RequestSuppressed(uint256,address,string)");
+        bytes32 want = keccak256(bytes(reason));
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] != topic0) continue;
+            if (keccak256(bytes(abi.decode(logs[i].data, (string)))) == want) n++;
+        }
+    }
+
+    function test_repeatedIdenticalEventsProduceOneRequest() public {
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 450, 3500); // gap 50 -> request #1
+        assertEq(_requestCount(), 1);
+
+        vm.recordLogs();
+        _rate(BASE, poolB, 450, 3500); // identical again
+        _rate(BASE, poolB, 450, 3500); // and again
+        _rate(BASE, poolA, 500, 4000);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        assertEq(_requestCount(), 1); // still one
+        assertEq(_countSuppressed(logs, "backoff"), 3);
+    }
+
+    function test_changedRateProducesANewRequest() public {
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 450, 3500); // request #1
+        assertEq(_requestCount(), 1);
+
+        _rate(BASE, poolB, 300, 3500); // the base rate moved by 150 >= spikeBps
+        assertEq(_requestCount(), 2);
+    }
+
+    function test_backoffExpiryProducesANewRequest() public {
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 450, 3500); // request #1
+        vm.warp(block.timestamp + rsc.requestBackoff() - 1);
+        _rate(BASE, poolB, 450, 3500);
+        assertEq(_requestCount(), 1); // still inside the backoff
+
+        vm.warp(block.timestamp + 1);
+        _rate(BASE, poolB, 450, 3500);
+        assertEq(_requestCount(), 2); // backoff over, same rates -> ask again
+    }
+
+    function test_ignoreVerdictRestartsTheBackoff() public {
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 450, 3500); // request #1
+
+        vm.warp(block.timestamp + 200);
+        _verdict(BASE, regB, 1, poolA, 2, 1); // IGNORE -> gate re-armed now
+
+        // 500s after the IGNORE (700s after the request): still inside the restarted backoff
+        vm.warp(block.timestamp + 500);
+        _rate(BASE, poolB, 450, 3500);
+        assertEq(_requestCount(), 1);
+
+        vm.warp(block.timestamp + 100); // exactly the backoff after the IGNORE
+        _rate(BASE, poolB, 450, 3500);
+        assertEq(_requestCount(), 2);
+    }
+
+    function test_vaultSkipRestartsTheBackoff() public {
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 900, 3500);
+        _verdict(BASE, regB, 1, poolB, 1, 1); // ACT -> rebalance callback
+        assertEq(_countSel(vaultB, IVaultCallbacks.rebalance.selector), 1);
+
+        vm.warp(block.timestamp + 200);
+        // vault skipped it: no funds to move
+        _react(_log(BASE, vaultB, rsc.REBALANCE_SKIPPED_TOPIC(), 1, 0, 2, abi.encode(uint256(0), uint256(0))));
+
+        vm.warp(block.timestamp + 500); // inside the backoff restarted by the skip
+        vm.recordLogs();
+        _rate(BASE, poolB, 900, 3500);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(_requestCount(), 1);
+        assertEq(_countSuppressed(logs, "backoff"), 1);
+    }
+
+    function test_hourlyCapStopsRequestsPerChain() public {
+        rsc.setBackoff(600, 2);
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 450, 3500); // request #1
+        _rate(BASE, poolB, 300, 3500); // base moved 150 -> request #2
+        assertEq(_requestCount(), 2);
+        assertEq(rsc.requestsThisHour(BASE), 2);
+
+        vm.expectEmit(true, true, false, true);
+        emit RequestSuppressed(BASE, poolA, "hourly cap");
+        _rate(BASE, poolB, 150, 3500); // would be a new request, but the hour is spent
+
+        assertEq(_requestCount(), 2);
+        assertEq(rsc.requestsThisHour(BASE), 2);
+
+        // a new hour resets the budget
+        vm.warp(block.timestamp + 1 hours);
+        _rate(BASE, poolB, 150, 3500);
+        assertEq(_requestCount(), 3);
+        assertEq(rsc.requestsThisHour(BASE), 1);
+    }
+
+    function test_capIsPerChain() public {
+        _configure(UNI, vaultU, reqU, regU, poolC, poolD);
+        rsc.setBackoff(600, 1);
+
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 450, 3500); // Base request #1 (Base budget now spent)
+        _rate(BASE, poolB, 300, 3500); // Base: suppressed by the cap
+        assertEq(_requestCount(), 1);
+
+        _rate(UNI, poolC, 700, 4000);
+        _rate(UNI, poolD, 600, 3500); // Unichain has its own budget
+        assertEq(_countSel(reqU, IRequesterCallbacks.requestDecision.selector), 1);
+    }
+
+    function test_setBackoffRejectsBadParams() public {
+        vm.expectRevert("backoff too short");
+        rsc.setBackoff(1, 10);
+        vm.expectRevert("bad hourly cap");
+        rsc.setBackoff(600, 0);
+    }
+
+    function test_setBackoffIsOwnerOnly() public {
+        vm.prank(makeAddr("stranger"));
+        vm.expectRevert("only owner");
+        rsc.setBackoff(600, 10);
     }
 }

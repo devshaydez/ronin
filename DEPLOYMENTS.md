@@ -33,6 +33,7 @@ Aave V3 mode: the vault holds the real Aave USDC reserve, with one mock stress p
 | `DecisionRequester` | `0x2780a1a41e73859b06683D6da0d993Dae0b797f9` | `0xaa9b44b41354758cd5095147a8920aafd80b28a7a952fe920cbbbd4e8da37d67` | 60586085 |
 | `AIVerdictRegistry` | `0x0fe0591be4eb54DE1Be6Ec53EBFaC05F86B9758D` | `0x7e1b80eb442f654cfdfb6f1d949ab03f0b13e57652f493a4488475a80bb4c0ca` | 60586085 |
 | `RoninVault` | `0x1827b78aCEBb5085CFB7C6DCC474414983348Ec9` | `0x8fc9dea97a28528a1c3b81445b6c510da6c62dffc1a5c64cce12d60648608007` | 60586085 |
+| `MockLendingPool` (stress D, added 2026-11-20) | `0x011121a7476Dcc6E342FAA64a0c03bd9A093d1f5` | `0x9c3da7dff750a2b9494022426833f7709467ec63453687ddee1782fb2d6164f0` | 61408207 |
 
 External contracts:
 
@@ -168,3 +169,44 @@ cast call 0x4384345dD2fCA2656A7E7105D74D313e0eF5A27B \
   "plans(uint256)(address,address,uint128,uint32,uint64,uint16,bool,uint8,uint16)" 7 \
   --rpc-url $UNICHAIN_SEPOLIA_RPC                                      # paid 2/3
 ```
+
+## 2026-11-20: live demo run (budget, `PoolAdded` subscription, AI loop)
+
+### Reactive budget (reserves / debt, in lREACT wei)
+
+The RSC pays for every reaction from its reserve on the system contract. Measured that day:
+
+| Time (UTC) | Reserves | Debt | What happened |
+|---|---|---|---|
+| ~19:14 | `0` | `4.7233e15` | found halted: CRON had spent the 3 lREACT deploy funding |
+| ~19:20 | `0.4099e18` | `0` | topped up 0.5 lREACT, tx `0xd6268286a66ecd62ee6377be5c89a6cf261531b6b1dae3de59efb07360f09c7d` (block 8833200) |
+| ~19:35 | `0` | `2.76e15` | drained again by CRON ticks |
+| ~19:36 | `0.597e18` | `0` | topped up 0.6 lREACT, tx `0x8f9e34301ae6819ecb6404732e0da168056678d86014c2289c3176b0b996d35b` (block 8835355) |
+| ~19:39 | — | — | CRON switched off: `setCron(false)`, tx `0x9922190826735aa7c0d5a0349775e61dee2b94741d77135046c453ab88ee4dbf` |
+| ~19:52 | `0` | `6.825e15` | drained by event reactions (Aave rate updates arrive often) |
+| ~19:55 | `0.0132e18` | `0` | topped up 0.02 lREACT, tx `0xcdbcf990b8b0dbae5617c26f478b80964009996667c9f0acec19ba27ba64b115` |
+| ~20:05 | `0` | `2.76e15` | exhausted again |
+
+Cost per unit of work, measured on this deployment:
+
+- CRON tick with 5 due plans: **746,897 gas**; at 110 gwei that is **~0.08 lREACT per tick** (about 0.1 measured live), i.e. roughly 5 ticks per 0.5 lREACT.
+- A single event reaction (one `RateObserved`) is much cheaper, but the Aave adapter emits rate updates every few minutes, so a long-running demo needs a budget sized in lREACT, not ETH.
+
+Consequence: once the reserve is empty the system contract accrues **debt** and stops executing reactions. A `PoolAdded` event delivered in that state is dropped, not replayed — the pool stays unwatched until the owner calls `watchPool` again.
+
+### `PoolAdded` → automatic subscription (no owner call to the RSC)
+
+| Step | Evidence |
+|---|---|
+| Deploy stress pool C `0x54461F1C3622bc6e98216ED9A3a389be164a3D23`, `vault.addPool(C)` tx `0x3686a2bbec605268757daf7eb62b05f19694dc4a65879e4867f70dbae346f9b0` | `isWatched(84532, C) == false` — the RSC had no reserve at that moment, so the reaction never ran |
+| Deploy stress pool D `0x011121a7476Dcc6E342FAA64a0c03bd9A093d1f5`, `vault.addPool(D)` tx `0xb838f991e2d1dfe5a3adb1c5cc608fb220f17fb1a9ed6af24e33bb6061ad1cfb` (block 61408249) | after funding: `isWatched(84532, D) == true` |
+| `rnk_getFilters` before / after | Base Sepolia filters **13 → 14** (`{"1301":13,"84532":14}` after the CRON filter is removed); no transaction to the RSC from the owner |
+
+### AI loop reached the destination hop but not the vault
+
+- `DecisionRequested` on Base Sepolia: **11** since deploy (request ids 1–11); Unichain: **0**.
+- The running AI service answered the request with `ACT target = 0xa8E0681Ca84A84CB971bcD8485d91e03DB96c740` (registry tx `0x72c93b1f97e7dbe8c82c76f26e6a17242f5c07eacb36a66d62dfc511f7ed7120`, `0xd4225b2a4a87d20b43269729bd1aee7f6fc0e98d4779f6924ce6f6a686e81a41`).
+- RSC: `VerdictSeen` (verdict #1, `action=1 ACT`, 6s after the request) and `RebalanceRequested` (verdict #1, target `0xa8E0681Ca84A84CB971bcD8485d91e03DB96c740`, gap 895 bps) in the same Lasna tx `0x15d61588d7d07f9f1692e16c81b522a0c9f0b400b4099a92d491be38482ec9cb` (block 8835732), but **no destination tx**: the reserve hit zero before the callback was posted, so the vault never saw the rebalance. This is the same failure mode as the dropped `PoolAdded` above.
+- `Rebalanced` / `RebalanceSkipped` / `PausedByVerdict` / `EmergencyExit` on both vaults: **0** events in the whole deployment.
+
+The request backoff and hourly cap (`RequestGate`, `requestBackoff = 600`, `maxRequestsPerHour = 12`, `RequestSuppressed`) are implemented and tested in `src/RoninReactive.sol` but **not** in the deployed bytecode — the live RSC is the 2026-11-19 build. They take effect on the next authorized redeploy.

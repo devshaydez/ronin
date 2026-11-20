@@ -1,0 +1,22 @@
+# Secrets
+.env
+.env.*
+
+# Dependencies (installed with `forge install`, see README)
+lib/
+
+# Build artifacts
+out/
+cache/
+broadcast/
+
+# Node
+node_modules/
+ai-service/latency.jsonl
+
+# Deploy logs kept locally for evidence, not committed
+deploy-out/
+
+# OS noise
+.DS_Store
+ai-service/.proof-cache.json
