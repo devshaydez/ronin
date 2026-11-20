@@ -417,7 +417,7 @@ if (complete.length === 0) md.push(`| — | — | — | no complete loops in thi
 md.push(``);
 md.push(`**${complete.length}** complete loops, of which **${planLoops.length}** are standing-order payouts and **${complete.length - planLoops.length}** are AI verdict loops.`);
 md.push(``);
-md.push(`Refused or ignored: **${refused.length}** (one line, not one row each: AI \`IGNORE\` or a verdict the RSC skipped, so there is no destination tx). The AI path in this window: **${decisions}** \`DecisionRequestSent\`, **${verdicts}** \`VerdictSeen\`, **${rebalances}** \`RebalanceRequested\`, **${verdictDestCount}** verdict destination txs; **${suppressed}** \`RequestSuppressed\` (backoff / cooldown / hourly cap; the deployed build predates them).`);
+md.push(`Refused or ignored: **${refused.length}** (one line, not one row each: AI \`IGNORE\` or a verdict the RSC skipped, so there is no destination tx). The AI path in this window: **${decisions}** \`DecisionRequestSent\`, **${verdicts}** \`VerdictSeen\`, **${rebalances}** \`RebalanceRequested\`, **${verdictDestCount}** verdict destination txs; **${suppressed}** \`RequestSuppressed\` (backoff / cooldown / hourly cap).`);
 md.push(``);
 md.push(`Ack/retry in this window: **${retried}** \`ActionRetried\`, **${stuck}** \`ActionStuck\`.`);
 md.push(``);

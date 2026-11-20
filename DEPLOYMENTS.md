@@ -4,6 +4,85 @@ Live testnet deployment of Ronin, including standing orders (plans) and callback
 Every transaction below has receipt status `1` unless noted.
 Deployed **2026-11-19** with Foundry 1.9.0 (solc 0.8.29, `evm_version = cancun`, `via_ir = true`).
 
+## CURRENT — 2026-11-20 redeploy (dynamic CRON, per-tick caps, backoff)
+
+This is the live build; everything below it is the previous deployment, kept for reference.
+
+| Contract | Chain | Address | Tx | Block |
+|---|---|---|---|---|
+| `RoninReactive` | Lasna | `0x1827b78acebb5085cfb7c6dcc474414983348ec9` | `0x2275df2724ac73e693484cf2d81dd14697680a716f679c3ccfb9f708e1575eb7` | 8842382 |
+| `AaveV3Adapter` | Base | `0x5FcA572238C2d68bfAf208bA0C362a6091484E6e` | `0xb6204a59b7086e8a692af2df59bf05d8184525629b3c0fde8025d4d11c4d643f` | 61444881 |
+| `MockLendingPool` (stress) | Base | `0x0Bd0E5FDa3e21a23D0ef9B3267d1541c2AbE58F6` | `0x725adfc1f34eaecf3c91f9922178b6b6aec4b1c6d1fb13af58b7cd9b53a88b2c` | 61444881 |
+| `MockLendingPool` (Boost, added at runtime) | Base | `0x139a6D6A2aCFd5E35156fb71687c9eDA129Fb94F` | deployed with `forge create`, then `vault.addPool` `0x1b6f09a112072662a4af03d0cba1e3c17e09cd1999879d0cd4dc76718512112e` | 61445192 |
+| `DecisionRequester` | Base | `0xCfc59C513752A10Cd024B4B655B829D7e7cCec80` | `0xaaa3eec3b6261a67c4907965849fa1fbdaaac73cebd647d9d65678bdead01400` | 61444881 |
+| `AIVerdictRegistry` | Base | `0x6950F7B22bF1f7Ba720e6e92BE822407f16b4C8e` | `0x7a8fd3b9206372414060cf049cfcccc9ad438139e5c0102b76da8d620a7184e8` | 61444881 |
+| `RoninVault` | Base | `0x60AA54822B790FdBe4985bb78c2Ce5D088d83627` | `0x79e663c42f6d14861a2868a503b5db7ff66b9c8e7aa6b0143411288667b47260` | 61444881 |
+| `MockUSDC` | Unichain | `0xA16eB9a84985e245448000bBF8bB556dC563684d` | `0x45dfd2e315b04d6122da43661d01a7cde190a9dd59e3f1531dd0581aa3db7f89` | 68358429 |
+| `MockLendingPool` A | Unichain | `0x54461F1C3622bc6e98216ED9A3a389be164a3D23` | `0xc0c9a69f46afc088890f273b8977d4d99a3edd514039a3889557d7de333ceb48` | 68358429 |
+| `MockLendingPool` B | Unichain | `0xE098eaF9Bc39A44dfe14dC9B0ddcf37A146f7bF6` | `0x3370b40f3b036f388dc50ff149729c522510414352e47fac6a975aa74f9eabcd` | 68358429 |
+| `DecisionRequester` | Unichain | `0x46E1dA14dfCA2795f3aFB4D0d378FA990F40aF1e` | `0x51f6de7ed1fb87d42ab2e5982a6597c73c4e093696f2f646a1b85cd213f5fe3d` | 68358429 |
+| `AIVerdictRegistry` | Unichain | `0x69107baF143C38722744a09e3f27c3c076469d5f` | `0xbbca3843fedad05169a3868840f6cf5b146b99d7108bb5a47c3f14d95d7f80a9` | 68358429 |
+| `RoninVault` | Unichain | `0x64E6FeC3bCdF9944B27d7419FB7d516bE24dA652` | `0x29ce481c5b28b466ac700d5fea57ac638119e1f29f1bc5ef6098a3fcb7ccc579` | 68358429 |
+
+Wiring (Lasna): `configureChain(84532, …)` + `configureAave(…)` in `0x379f8164aab152885be421d4f58b7a4601ee4a2613183dae840762eb7e20646b`
+and `configureChain(1301, …)` in `0xc69e258c7a7a5d77b228d10be3449c15c1b67bf8c97e01bb928edcb636cffa71` (both block 8842386/8842395).
+
+Constructor: `minGapBps=50`, `breakerUtilBps=9500`, `spikeBps=150`, `staleAfter=900`, `requestCooldown=15`,
+`rescoreEveryTicks=0` (deploy script default), funded with 0.5 lREACT, then topped up to 1.5 lREACT with
+`depositTo` before the demo and 0.5 more during it. `MAX_PLANS_PER_TICK=3`, `MAX_RETRIES_PER_TICK=2`.
+
+> The RSC address equals the *previous* Base vault address: both were the deployer's same-nonce CREATE on different
+> chains. They are unrelated contracts and live on different networks.
+
+### Demo window (2026-11-20, blocks 8842382–8845300)
+
+| What | Evidence |
+|---|---|
+| Base vault funded | 1,000 USDC deposited (`0xd4b752b731d4…`), all allocated to the stress pool |
+| AI loop (skipped) | verdict 1, `RebalanceSkipped` in Base tx `0xd7783e6d84aa…` (target already held the funds) |
+| AI loop (moved) | verdict 2, `Rebalanced(2, 0x139a…b94F, 500 USDC, 500 USDC)` in `0xdcd85f31144ef70e54b27e3ddb0b120658b796665207710cfd9e20d39f221668`, `LoopClosed` on Lasna `0x3ed53a7c6500…` |
+| Dynamic subscription | `addPool(0x139a…)` → `PoolAdded` → RSC `PoolWatched` (filters 27 → 28) with no owner tx to the RSC |
+| 6 standing orders | plans #1–#3 `YIELD_ONLY`, #4–#6 `YIELD_THEN_PRINCIPAL`, 1 USDC every 120 s × 3; 18 payouts, `PlanScheduled` 6× and `CronEnabled`/`CronDisabled` around them |
+| Three 20 USDC payouts | plans #7–#9 paid 20 USDC each, `PlanExecuted` txs `0xee7605ea…`, `0xfc70a744…`, `0xb7ef1e82…` |
+| Missed ack → retry → stuck | verdict 3 callback never acked (`low confidence` at the vault, confidence 6000 < 7000): `ActionRetried` ×2 (`0xa92e5132…`, `0x4ee561f4…`) then `ActionStuck` (`0x0afe5dcdc7b8…`) |
+| Second AI loop | after `setParams(5500, …)`, verdict 4 retried (`0x0d8a3aaa…`, `0xcb9e3c6f…`) then `Rebalanced` `0x5e8ce167bc4f…` + `LoopClosed` |
+| Omnichain breaker | Base stress pool utilisation → 9700 bps: `BreakerTripped` `0x44e5c57584df…`, `ExitObserved`/`EmergencyExit` `0xe5eb89f83de7…`, `OmniPause(1301)` `0x30d7a3daa27f…`, Unichain vault `PausedByReactive` `0xae3afb1171c0…` |
+| Self-heal | utilisation back to 4000 bps: `BreakerCleared` + `OmniHeal(1301)` `0x91ac9b97344a…`, Unichain `UnpausedByReactive` `0x6c0fe2c3da03…` |
+
+`ai-service/PROOF.md` records 22 complete loops from this window (18 standing-order payouts, 4 AI verdict loops)
+plus 4 `ActionRetried` and 1 `ActionStuck`.
+
+### Reactive budget for the window
+
+| Time | Reserves | Debt | Note |
+|---|---|---|---|
+| after deploy | 0.5 | 0 | constructor value; reserves need `depositTo` |
+| +3 × 0.5 lREACT | 1.5 | 0 | before the demo |
+| mid-demo | 1.945 → 1.55 | 0 | ~0.4 lREACT in ~4 min: cron ticks plus real Aave `ReserveDataUpdated` traffic (~1 event/3 s) |
+| +2 × 0.5 lREACT | 1.98 | 0 | kept the demo alive |
+| after the window | 0.273 → +0.5 → **0.678** | 0 | minimum-cost state set, one top-up left in place |
+
+`get_rc_health` after the window: **HEALTHY**, debt 0, 28/28 subscriptions active, 0 reverts/hour.
+
+### Minimum-cost state (left running)
+
+`cronOn=false`, `needCron()=false`, `watchdog=false`, `rescoreEveryTicks=0`, `estimatedBurnPerHour()=0`,
+no active plans, no in-flight actions. The RSC is still subscribed to the Aave `ReserveDataUpdated` feed, so it keeps
+reacting to real protocol updates: measured with everything else idle, **0.0714 lREACT per 2 minutes (≈2.1 lREACT/h)**
+at ~100 gwei, about 0.032 lREACT per reaction. That feed, not cron, is the remaining cost; the only way to stop it
+without a code change is to let the reserve run out (which then accrues debt). A `disableFeed()`/`unsubscribeAave`
+owner knob is the next thing to add.
+
+### Open defect found in the demo
+
+`yieldAvailable` does not fall as a `YIELD_ONLY` plan pays: `_withdraw` reduces `costBasis` in proportion to the
+shares burned, which removes the same fraction of the unrealised gain, so the reported yield stays ~constant
+(40 → 37 USDC after 25 USDC of payouts) while the pot shrinks. Consequence: a `YIELD_ONLY` plan keeps paying while
+the vault silently erodes principal, and `YIELD_THEN_PRINCIPAL` never reports a principal component (all six
+mode-1 payouts show `fromYield = amount`, `fromPrincipal = 0`). Fix: reduce cost basis by the principal component
+only (`fromPrincipal`) instead of the proportional share, and add a test asserting that `yieldAvailable` drops by
+the paid amount. Not changed here: it moves money semantics and needs its own redeploy.
+
 ## Networks
 
 | Role | Network | Chain ID | RPC |
