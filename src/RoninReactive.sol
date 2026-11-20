@@ -141,7 +141,17 @@ contract RoninReactive is AbstractReactive {
     /// @notice Hard cap on AI requests per chain per rolling hour.
     uint256 public maxRequestsPerHour = 12;
     uint256 public rescoreEveryTicks; // every N Cron100 ticks, ask the AI for a scheduled re-score (0 = off)
-    bool public cronOn = true;
+    /// @notice True only while the CRON100 subscription is live. It is managed automatically: the RSC
+    ///         subscribes when there is work (an active plan, an action awaiting its ack, the watchdog, or
+    ///         a scheduled re-score) and unsubscribes when there is none, so an idle RSC burns no lREACT.
+    bool public cronOn;
+    /// @notice Opt-in stale-data watchdog. Off by default: it costs one tick's gas forever, so it is a
+    ///         deliberate owner setting rather than something the demo leaves running.
+    bool public watchdog;
+    /// @notice Plans that still have payments left. Drives the cron subscription.
+    uint256 public activePlans;
+    /// @notice Rebalance callbacks sent but not yet acked. Drives the cron subscription (retries).
+    uint256 public pendingActions;
     uint256 public ticks;
     // Self-funding: reserves are consumed first, and execution STOPS while debt > 0, so on every CRON tick
     // the contract tops its own reserves up from its balance before they run dry.
@@ -158,10 +168,16 @@ contract RoninReactive is AbstractReactive {
     mapping(bytes32 => uint256) public verdictReqTs; // (chain, verdictId) => timestamp of the originating request
     mapping(bytes32 => address) public aaveAdapter; // (chain, aavePool, reserve) => vault adapter fed by that reserve
 
-    // Standing orders: plans are processed round-robin, at most MAX_PLANS_PER_TICK per cron tick.
-    // 5 keeps a worst-case tick under the 900k react() cap even when every plan needs a callback
-    // (measured in test_gasCronTickWithMaxPlans; 8 plans was ~1.13M in the local harness).
-    uint256 public constant MAX_PLANS_PER_TICK = 5;
+    // Per-tick work caps. A callback request is the expensive part of a tick (~130k gas measured), so the
+    // tick cost is bounded by these two numbers rather than by how many plans the vault holds.
+    uint256 public constant MAX_PLANS_PER_TICK = 3;
+    uint256 public constant MAX_RETRIES_PER_TICK = 2;
+    // Measured in test/RoninReactive.t.sol (test_gasCronTickIdleIsCheap, test_gasCronTickWithMaxPlans):
+    // an idle tick is ~79k (react() entry, tick counter, self-fund check), and every callback adds ~137k.
+    uint256 public constant CRON_BASE_GAS = 79_000;
+    uint256 public constant CRON_CALLBACK_GAS = 137_000;
+    /// @notice Cron100 fires about every 100 blocks (~2 minutes on Lasna).
+    uint16 public constant CRON_TICKS_PER_HOUR = 30;
     uint256 public constant MAX_ATTEMPTS = 3;
     PlanRef[] internal planRefs;
     mapping(bytes32 => PlanState) internal planState;
@@ -208,6 +224,8 @@ contract RoninReactive is AbstractReactive {
     event StaleHealed(uint256 indexed chainId);
     event OmniSignalSent(uint256 indexed chainId, uint256 localBestBps, uint256 globalBestBps, uint256 globalBestChainId);
     event Tick(uint256 indexed n);
+    event CronEnabled(uint256 activePlans, uint256 pendingActions, bool watchdog, uint256 rescoreEveryTicks);
+    event CronDisabled(uint256 activePlans, uint256 pendingActions, bool watchdog, uint256 rescoreEveryTicks);
     event ActionRetried(uint256 indexed chainId, uint8 kind, uint256 indexed id, uint8 attempt, uint256 originTx);
     event ActionStuck(uint256 indexed chainId, uint8 kind, uint256 indexed id, uint256 originTx);
     event PlanScheduled(uint256 indexed chainId, uint256 indexed planId, uint64 nextDue, uint16 remaining);
@@ -232,7 +250,10 @@ contract RoninReactive is AbstractReactive {
         staleAfter = staleAfter_;
         requestCooldown = requestCooldown_;
         rescoreEveryTicks = rescoreEveryTicks_;
-        _subscribeCron();
+        // Subscribe only if something already needs ticks (a rescore interval set at deploy). With
+        // rescoreEveryTicks = 0 the RSC starts with no CRON subscription and burns nothing.
+        cronOn = needCron();
+        if (cronOn) _subscribeCron();
     }
 
     // ───────────────────────── Owner wiring ─────────────────────────
@@ -309,17 +330,32 @@ contract RoninReactive is AbstractReactive {
         staleAfter = staleAfter_;
         requestCooldown = requestCooldown_;
         rescoreEveryTicks = rescoreEveryTicks_;
+        _syncCron(); // a rescore interval change can turn the cron subscription on or off
     }
 
-    /// @notice CRON subscriptions bill on every tick. Switch off to save lREACT when not demoing.
-    function setCron(bool on) external onlyOwner {
-        if (on == cronOn) return;
-        cronOn = on;
-        if (on) _subscribeCron();
-        else
-            SYSTEM.unsubscribe(
-                block.chainid, LEGACY_SYSTEM, CRON100_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
-            );
+    /// @notice Turn the stale-data watchdog on or off. It is the only reason to keep ticking with no work,
+    ///         so it is opt-in and immediately re-syncs the subscription.
+    function setWatchdog(bool on) external onlyOwner {
+        watchdog = on;
+        _syncCron();
+    }
+
+    /// @notice True when something needs a tick: a live plan, an unacked action, the watchdog, or a rescore.
+    function needCron() public view returns (bool) {
+        return activePlans > 0 || pendingActions > 0 || watchdog || rescoreEveryTicks != 0;
+    }
+
+    /// @notice Gas one CRON100 tick can cost right now, at the per-tick work caps.
+    ///         Idle (nothing due) is CRON_BASE_GAS; each plan/retry callback adds CRON_CALLBACK_GAS.
+    function estimatedBurnPerHour() public view returns (uint256 gas) {
+        if (!cronOn) return 0;
+        gas = uint256(CRON_TICKS_PER_HOUR)
+            * (CRON_BASE_GAS + (MAX_PLANS_PER_TICK + MAX_RETRIES_PER_TICK) * CRON_CALLBACK_GAS);
+    }
+
+    /// @notice The same estimate in wei at a given gas price.
+    function estimatedBurnPerHourWei(uint256 gasPriceWei) external view returns (uint256) {
+        return estimatedBurnPerHour() * gasPriceWei;
     }
 
     function coverDebt() external {
@@ -330,6 +366,13 @@ contract RoninReactive is AbstractReactive {
 
     /// @inheritdoc IReactive
     function react(LogRecord memory log_) external onlySystem {
+        _dispatch(log_);
+        // Any event can change how much work is pending (a plan created, a plan finished, an action acked),
+        // so the CRON subscription is re-evaluated exactly here, once per react.
+        _syncCron();
+    }
+
+    function _dispatch(LogRecord memory log_) internal {
         if (log_.topic0 == CRON100_TOPIC && log_.contractAddress == LEGACY_SYSTEM) {
             _onCron();
             return;
@@ -510,6 +553,7 @@ contract RoninReactive is AbstractReactive {
         ps.period = period;
         ps.remaining = remaining;
         ps.mode = mode;
+        if (!ps.active) activePlans++;
         ps.active = true;
         ps.stuck = false;
         ps.inFlightSince = 0;
@@ -521,9 +565,11 @@ contract RoninReactive is AbstractReactive {
         uint256 id = log_.topic1;
         (,,, uint64 nextDue, uint16 remaining) = abi.decode(log_.data, (uint256, uint256, uint256, uint64, uint16));
         PlanState storage ps = _ensurePlan(chainId, id, 0);
+        bool wasActive = ps.active;
         ps.nextDue = nextDue;
         ps.remaining = remaining;
         ps.active = remaining > 0;
+        if (wasActive && !ps.active && activePlans > 0) activePlans--;
         ps.stuck = false;
         ps.inFlightSince = 0;
         ps.attempts = 0;
@@ -538,13 +584,17 @@ contract RoninReactive is AbstractReactive {
         // YIELD_THEN_PRINCIPAL consumes a payment when it cannot pay; YIELD_ONLY postpones it.
         if (ps.mode == 1 && ps.remaining > 0) {
             ps.remaining--;
-            if (ps.remaining == 0) ps.active = false;
+            if (ps.remaining == 0 && ps.active) {
+                ps.active = false;
+                if (activePlans > 0) activePlans--;
+            }
         }
     }
 
     function _onPlanClosed(uint256 chainId, uint256 id) internal {
         PlanState storage ps = planState[_planKey(chainId, id)];
         if (!ps.known) return;
+        if (ps.active && activePlans > 0) activePlans--;
         ps.active = false;
         ps.inFlightSince = 0;
         ps.attempts = 0;
@@ -571,12 +621,16 @@ contract RoninReactive is AbstractReactive {
             a.attempts = 1;
             a.lastSentAt = uint64(block.timestamp);
             pendingRebalances[chainId].push(key);
+            pendingActions++;
         }
     }
 
     function _clearRebalance(uint256 chainId, uint256 verdictId) internal {
         RebalanceAction storage a = rebalanceAction[_key(chainId, verdictId)];
-        if (a.pending) a.pending = false;
+        if (a.pending) {
+            a.pending = false;
+            if (pendingActions > 0) pendingActions--;
+        }
     }
 
     function _onExit(uint256 chainId, LogRecord memory log_) internal {
@@ -599,9 +653,10 @@ contract RoninReactive is AbstractReactive {
     /// @dev Best-effort: if the system contract rejects any of this we simply carry on (try/catch).
     ///      A reverting react() would still be billed, so nothing here is allowed to revert.
     function _selfFund() internal {
-        if (topUp == 0) return;
+        // Cheapest checks first: no configured top-up or no balance means no system call at all.
+        if (topUp == 0 || address(this).balance < topUp) return;
         try ISystemFunding(address(SYSTEM)).reserves(address(this)) returns (uint256 r) {
-            if (r >= minReserve || address(this).balance < topUp) return;
+            if (r >= minReserve) return;
             try ISystemFunding(address(SYSTEM)).depositTo{value: topUp}(address(this)) {
                 emit SelfFunded(r, topUp);
             } catch {}
@@ -617,23 +672,33 @@ contract RoninReactive is AbstractReactive {
         ticks++;
         emit Tick(ticks);
         _selfFund();
-        for (uint256 i = 0; i < chainIds.length; i++) {
-            uint256 id = chainIds[i];
-            Chain storage c = chains[id];
 
-            // staleness watchdog
-            if (c.lastRateAt != 0 && !c.stalePaused && block.timestamp > c.lastRateAt + staleAfter) {
-                c.stalePaused = true;
-                emit StaleDetected(id, block.timestamp - c.lastRateAt);
-                _cb(id, c.vault, abi.encodeCall(IVaultCallbacks.pauseByReactive, (address(0), STALE_REASON)));
-            }
+        // The watchdog and the scheduled re-score are the only per-chain work; skip the whole loop when both
+        // are off, which is the normal state (nothing else in a tick needs chain data).
+        bool rescore = rescoreEveryTicks != 0 && ticks % rescoreEveryTicks == 0;
+        if (watchdog || rescore) {
+            for (uint256 i = 0; i < chainIds.length; i++) {
+                uint256 id = chainIds[i];
+                Chain storage c = chains[id];
 
-            // scheduled AI re-score
-            if (rescoreEveryTicks != 0 && ticks % rescoreEveryTicks == 0) {
-                (address best,, uint256 gap) = _bestAndGap(id);
-                if (best != address(0)) _maybeRequest(id, best, gap, 3);
+                // staleness watchdog (opt-in)
+                if (watchdog && c.lastRateAt != 0 && !c.stalePaused && block.timestamp > c.lastRateAt + staleAfter)
+                {
+                    c.stalePaused = true;
+                    emit StaleDetected(id, block.timestamp - c.lastRateAt);
+                    _cb(id, c.vault, abi.encodeCall(IVaultCallbacks.pauseByReactive, (address(0), STALE_REASON)));
+                }
+
+                // scheduled AI re-score
+                if (rescore) {
+                    (address best,, uint256 gap) = _bestAndGap(id);
+                    if (best != address(0)) _maybeRequest(id, best, gap, 3);
+                }
             }
         }
+
+        // Nothing pending: exit before touching the plan/rebalance loops at all.
+        if (activePlans == 0 && pendingActions == 0) return;
 
         // Standing orders and retries share the same bounded budget, so one react stays well under 900k gas.
         _processPlans();
@@ -658,6 +723,8 @@ contract RoninReactive is AbstractReactive {
                 if (block.timestamp < uint256(ps.inFlightSince) + retryAfter) continue;
                 if (ps.attempts >= MAX_ATTEMPTS) {
                     ps.stuck = true;
+                    ps.active = false;
+                    if (activePlans > 0) activePlans--;
                     ps.inFlightSince = 0;
                     emit ActionStuck(ref.chainId, 1, ref.planId, ps.originTx);
                     continue;
@@ -678,7 +745,7 @@ contract RoninReactive is AbstractReactive {
     }
 
     function _retryRebalances() internal {
-        uint256 budget = MAX_PLANS_PER_TICK;
+        uint256 budget = MAX_RETRIES_PER_TICK;
         for (uint256 i = 0; i < chainIds.length && budget > 0; i++) {
             uint256 chainId = chainIds[i];
             Chain storage c = chains[chainId];
@@ -691,6 +758,7 @@ contract RoninReactive is AbstractReactive {
                 // A verdict the vault would now reject is never worth re-sending.
                 if (block.timestamp > uint256(a.verdictAt) + maxVerdictAge || a.attempts >= MAX_ATTEMPTS) {
                     a.pending = false;
+                    if (pendingActions > 0) pendingActions--;
                     emit ActionStuck(chainId, 2, a.id, a.originTx);
                     continue;
                 }
@@ -889,6 +957,27 @@ contract RoninReactive is AbstractReactive {
         SYSTEM.subscribe(
             block.chainid, LEGACY_SYSTEM, CRON100_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
         );
+    }
+
+    function _unsubscribeCron() internal {
+        SYSTEM.unsubscribe(
+            block.chainid, LEGACY_SYSTEM, CRON100_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
+        );
+    }
+
+    /// @dev Dynamic cron: the subscription exists only while `needCron()`. Every react ends here, so a plan
+    ///      being created turns it on and the last plan finishing turns it off, with no owner transaction.
+    function _syncCron() internal {
+        bool need = needCron();
+        if (need == cronOn) return;
+        cronOn = need;
+        if (need) {
+            _subscribeCron();
+            emit CronEnabled(activePlans, pendingActions, watchdog, rescoreEveryTicks);
+        } else {
+            _unsubscribeCron();
+            emit CronDisabled(activePlans, pendingActions, watchdog, rescoreEveryTicks);
+        }
     }
 
     function _cb(uint256 chainId, address recipient, bytes memory payload) internal {

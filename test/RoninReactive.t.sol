@@ -18,12 +18,15 @@ contract MockSystem {
 
     Cb[] public cbs;
     uint256 public subs;
+    uint256 public unsubs;
 
     function subscribe(uint256, address, uint256, uint256, uint256, uint256) external {
         subs++;
     }
 
-    function unsubscribe(uint256, address, uint256, uint256, uint256, uint256) external {}
+    function unsubscribe(uint256, address, uint256, uint256, uint256, uint256) external {
+        unsubs++;
+    }
 
     function requestCallbackV_1_0(ISystemContract.CallbackConfiguration_V_1_0 memory c) external {
         cbs.push(Cb(c.chainId, c.recipient, c.payload));
@@ -214,6 +217,7 @@ contract RoninReactiveTest is Test {
     }
 
     function test_cronPausesStaleChainAndRateResumeHeals() public {
+        rsc.setWatchdog(true); // the watchdog is opt-in
         _rate(BASE, poolA, 500, 4000);
         vm.warp(block.timestamp + 901);
         _react(_log(block.chainid, rsc.LEGACY_SYSTEM(), rsc.CRON100_TOPIC(), 0, 0, 1, ""));
@@ -503,22 +507,99 @@ contract RoninReactiveTest is Test {
             _planCreated(BASE, vaultB, i, makeAddr("payee"), 120, uint64(block.timestamp), 3, 1);
         }
         _tick();
-        assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 5);
+        assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 3);
 
-        _tick(); // the in-flight 5 are waiting; the cursor reaches plans 6..10
+        _tick(); // the in-flight 3 are waiting; the cursor reaches plans 4..6
+        assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 6);
+        _tick();
+        _tick();
         assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 10);
     }
 
     function test_gasCronTickWithMaxPlans() public {
-        for (uint256 i = 1; i <= 5; i++) {
+        for (uint256 i = 1; i <= 3; i++) {
             _planCreated(BASE, vaultB, i, makeAddr("payee"), 120, uint64(block.timestamp), 3, 1);
         }
         uint256 g = gasleft();
         _tick();
         uint256 used = g - gasleft();
-        emit log_named_uint("cron tick gas with 5 due plans", used);
-        assertLt(used, 900_000);
-        assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 5);
+        emit log_named_uint("cron tick gas with 3 due plans", used);
+        assertLt(used, 600_000);
+        assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 3);
+    }
+
+    function test_gasCronTickIdleIsCheap() public {
+        uint256 g = gasleft();
+        _tick();
+        uint256 used = g - gasleft();
+        emit log_named_uint("idle cron tick gas", used);
+        // Second tick: the slot/log overhead is the same, the account accesses are warm.
+        uint256 g2 = gasleft();
+        _tick();
+        emit log_named_uint("idle cron tick gas (2nd)", g2 - gasleft());
+        assertLt(used, 90_000); // 747,051 with 5 due plans before; ~11% of that when idle
+    }
+
+    // ───────────── dynamic cron ─────────────
+
+    event CronEnabled(uint256 activePlans, uint256 pendingActions, bool watchdog, uint256 rescoreEveryTicks);
+    event CronDisabled(uint256 activePlans, uint256 pendingActions, bool watchdog, uint256 rescoreEveryTicks);
+
+    function test_cronFollowsPlansInAndOut() public {
+        // Turn the deploy-time rescore off: with it on, cron is legitimately always needed.
+        rsc.setParams(50, 9500, 150, 900, 0, 0);
+        _tick(); // re-syncs: nothing pending any more
+        assertFalse(rsc.cronOn());
+        uint256 unsubs = MockSystem(SYSTEM).unsubs();
+
+        vm.expectEmit(true, true, true, true);
+        emit CronEnabled(1, 0, false, 0);
+        _planCreated(BASE, vaultB, 1, makeAddr("payee"), 120, uint64(block.timestamp), 1, 1);
+        assertTrue(rsc.cronOn());
+        assertEq(rsc.activePlans(), 1);
+        assertEq(MockSystem(SYSTEM).subs(), 15); // configured 14 + cron
+
+        vm.expectEmit(true, true, true, true);
+        emit CronDisabled(0, 0, false, 0);
+        _planExecuted(BASE, vaultB, 1, uint64(block.timestamp + 120), 0); // last payment acked
+        assertFalse(rsc.cronOn());
+        assertEq(MockSystem(SYSTEM).unsubs(), unsubs + 1);
+    }
+
+    function test_cronStaysOnWhileAnActionAwaitsAck() public {
+        rsc.setParams(50, 9500, 150, 900, 0, 0);
+        _tick();
+        assertFalse(rsc.cronOn());
+
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 900, 3500);
+        _verdict(BASE, regB, 1, poolB, 1, 1); // -> RebalanceRequested, now unacked
+        assertEq(rsc.pendingActions(), 1);
+        assertTrue(rsc.cronOn());
+
+        _react(_log(BASE, vaultB, rsc.REBALANCED_TOPIC(), 1, uint256(uint160(poolB)), 3, abi.encode(uint256(1), uint256(2))));
+        assertEq(rsc.pendingActions(), 0);
+        assertFalse(rsc.cronOn());
+    }
+
+    function test_watchdogIsOptInAndKeepsCronOn() public {
+        rsc.setParams(50, 9500, 150, 900, 0, 0);
+        _tick();
+        assertFalse(rsc.cronOn());
+
+        rsc.setWatchdog(true);
+        assertTrue(rsc.cronOn());
+        assertEq(rsc.estimatedBurnPerHour(), 30 * (79_000 + 5 * 137_000));
+
+        rsc.setWatchdog(false);
+        assertFalse(rsc.cronOn());
+        assertEq(rsc.estimatedBurnPerHour(), 0);
+    }
+
+    function test_estimatedBurnPerHourIdleIsZero() public {
+        // Nothing pending and no watchdog/rescore: the RSC costs nothing per hour.
+        rsc.setParams(50, 9500, 150, 900, 0, 0);
+        assertEq(rsc.estimatedBurnPerHourWei(1 gwei), 0);
     }
 
     function test_unknownPlanEventDoesNotRevert() public {

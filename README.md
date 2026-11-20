@@ -48,7 +48,7 @@ Repository layout:
 | 10 | **Machine-readable proof**: events carry `LogRecord.txHash` (origin tx); `proof.js` joins it with the Reactive tx and `getCallbacks(reactiveTx)` (destination tx) and writes `PROOF.md` | `LogRecord`, system contract `getCallbacks`, `rnk_getFilters` |
 | 11 | **Autonomous ops agent** (`ops.js`) watches balance / reserves / debt of the Reactive contract, vaults and requesters, tops up with `depositTo`, and attaches Reactive MCP `get_rc_health` reports | Reactive economy + Reactive MCP |
 | 12 | **Request backoff + hourly cap**: a `(chain, pool)` pair is not asked twice while both of its rates sit still; per-chain rolling-hour budget | bounded off-chain work, no log-spam loops |
-| 13 | **Standing orders**: choose `YIELD_ONLY` (principal untouched) or `YIELD_THEN_PRINCIPAL`; `Vault.PlanCreated` is enough for the RSC to schedule recurring payouts from CRON, round-robin, at most 5 per tick (~747k gas measured with 5 due plans) | event-driven scheduling, bounded CRON compute |
+| 13 | **Standing orders**: choose `YIELD_ONLY` (principal untouched) or `YIELD_THEN_PRINCIPAL`; `Vault.PlanCreated` is enough for the RSC to schedule recurring payouts from CRON, round-robin, at most 3 per tick | event-driven scheduling, bounded CRON compute |
 | 14 | **Ack + retry**: every plan payout and ACT rebalance is recorded in flight; `PlanExecuted`/`PlanSkipped` and `Rebalanced`/`RebalanceSkipped` clear it. No ack after `retryAfter` re-sends, max 3 attempts, then `ActionStuck` (never retries a stale verdict) | subscriptions to your own outputs |
 
 ### AI request backoff and the hourly cap
@@ -138,7 +138,7 @@ the Lasna system contract locally, which uses Cancun opcodes; via_ir because the
 
 ```bash
 forge build
-forge test -vv            # 87 tests, includes the max-plan cron tick gas check
+forge test -vv            # 92 tests, includes the idle and max-plan cron tick gas checks
 cd ai-service && npm install && cd ..
 ```
 
@@ -286,11 +286,14 @@ are about 1s with instant finality (no reorgs, so the latency numbers are real).
   no reserves still gets its callback requests accepted but **never delivered** (you only see `ActionRetried`, then
   `ActionStuck`). You can also top up the contract itself (`cast send <addr> --value 0.005ether`) and call
   `coverDebt()` if callbacks stop.
-- The Reactive contract pays in lREACT. **CRON bills on every tick** (~2 min): a tick with 5 due plans is
-  746,897 gas, about **0.08-0.1 lREACT at 110 gwei**, so a 0.5 lREACT refill buys roughly 5 ticks. Event reactions are
-  cheaper but constant (the Aave adapter republishes rates every few minutes), so budget in lREACT and keep the
-  reserve topped up while the demo runs. Turn CRON off when not demoing:
-  `cast send $RSC "setCron(bool)" false --rpc-url $LASNA_RPC --private-key $DEPLOYER_PK`.
+- The Reactive contract pays in lREACT. **CRON is subscribed only while there is work**, so an idle RSC costs
+  nothing: creating a plan (or leaving an action unacked, or enabling the watchdog) subscribes to `Cron100`;
+  `CronEnabled` / `CronDisabled` mark each transition and `needCron()` says which state you are in. A tick costs
+  ~79,000 gas with nothing due (measured: 74-79k) and each plan or retry callback adds ~137,000 gas, capped at
+  3 plans + 2 retries per tick. `estimatedBurnPerHour()` returns the gas per hour at those caps (30 ticks/h), and
+  `estimatedBurnPerHourWei(gasPrice)` the same in wei; with nothing pending it returns 0. A 5-plan tick on the old
+  build was 746,897 gas (0.08-0.1 lREACT at 110 gwei), so the caps are what keep the burn predictable.
+  The stale-data watchdog is opt-in: `cast send $RSC "setWatchdog(bool)" true ...` keeps cron alive on its own.
   Check its economy with
   `cast call 0x8888888888888888888888888888888888888888 "reserves(address)(uint256)" $RSC --rpc-url $LASNA_RPC` and
   `cast call 0x8888888888888888888888888888888888888888 "debt(address)(uint256)" $RSC --rpc-url $LASNA_RPC`;
