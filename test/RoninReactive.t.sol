@@ -18,12 +18,15 @@ contract MockSystem {
 
     Cb[] public cbs;
     uint256 public subs;
+    uint256 public unsubs;
 
     function subscribe(uint256, address, uint256, uint256, uint256, uint256) external {
         subs++;
     }
 
-    function unsubscribe(uint256, address, uint256, uint256, uint256, uint256) external {}
+    function unsubscribe(uint256, address, uint256, uint256, uint256, uint256) external {
+        unsubs++;
+    }
 
     function requestCallbackV_1_0(ISystemContract.CallbackConfiguration_V_1_0 memory c) external {
         cbs.push(Cb(c.chainId, c.recipient, c.payload));
@@ -214,6 +217,7 @@ contract RoninReactiveTest is Test {
     }
 
     function test_cronPausesStaleChainAndRateResumeHeals() public {
+        rsc.setWatchdog(true); // the watchdog is opt-in
         _rate(BASE, poolA, 500, 4000);
         vm.warp(block.timestamp + 901);
         _react(_log(block.chainid, rsc.LEGACY_SYSTEM(), rsc.CRON100_TOPIC(), 0, 0, 1, ""));
@@ -250,8 +254,9 @@ contract RoninReactiveTest is Test {
         vm.warp(block.timestamp + 1);
         _react(_log(BASE, vaultB, rsc.REBALANCED_TOPIC(), 1, uint256(uint160(poolB)), 3, abi.encode(uint256(1), uint256(2))));
         // Chain struct: vault, requester, registry, exists, stalePaused, omniPaused, lastRateAt,
-        // lastRequestAt, lastRebalanceAt, rebalances, sentLocal, sentGlobal, sentBestChain
-        (,,,,,,,,, uint256 rebalances,,,) = rsc.chains(BASE);
+        // lastRequestAt, lastRebalanceAt, rebalances, sentLocal, sentGlobal, sentBestChain,
+        // requestWindowStart, requestsInWindow
+        (,,,,,,,,, uint256 rebalances,,,,,) = rsc.chains(BASE);
         assertEq(rebalances, 1);
     }
 
@@ -502,22 +507,99 @@ contract RoninReactiveTest is Test {
             _planCreated(BASE, vaultB, i, makeAddr("payee"), 120, uint64(block.timestamp), 3, 1);
         }
         _tick();
-        assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 5);
+        assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 3);
 
-        _tick(); // the in-flight 5 are waiting; the cursor reaches plans 6..10
+        _tick(); // the in-flight 3 are waiting; the cursor reaches plans 4..6
+        assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 6);
+        _tick();
+        _tick();
         assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 10);
     }
 
     function test_gasCronTickWithMaxPlans() public {
-        for (uint256 i = 1; i <= 5; i++) {
+        for (uint256 i = 1; i <= 3; i++) {
             _planCreated(BASE, vaultB, i, makeAddr("payee"), 120, uint64(block.timestamp), 3, 1);
         }
         uint256 g = gasleft();
         _tick();
         uint256 used = g - gasleft();
-        emit log_named_uint("cron tick gas with 5 due plans", used);
-        assertLt(used, 900_000);
-        assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 5);
+        emit log_named_uint("cron tick gas with 3 due plans", used);
+        assertLt(used, 600_000);
+        assertEq(_countSel(vaultB, IVaultCallbacks.executePlan.selector), 3);
+    }
+
+    function test_gasCronTickIdleIsCheap() public {
+        uint256 g = gasleft();
+        _tick();
+        uint256 used = g - gasleft();
+        emit log_named_uint("idle cron tick gas", used);
+        // Second tick: the slot/log overhead is the same, the account accesses are warm.
+        uint256 g2 = gasleft();
+        _tick();
+        emit log_named_uint("idle cron tick gas (2nd)", g2 - gasleft());
+        assertLt(used, 90_000); // 747,051 with 5 due plans before; ~11% of that when idle
+    }
+
+    // ───────────── dynamic cron ─────────────
+
+    event CronEnabled(uint256 activePlans, uint256 pendingActions, bool watchdog, uint256 rescoreEveryTicks);
+    event CronDisabled(uint256 activePlans, uint256 pendingActions, bool watchdog, uint256 rescoreEveryTicks);
+
+    function test_cronFollowsPlansInAndOut() public {
+        // Turn the deploy-time rescore off: with it on, cron is legitimately always needed.
+        rsc.setParams(50, 9500, 150, 900, 0, 0);
+        _tick(); // re-syncs: nothing pending any more
+        assertFalse(rsc.cronOn());
+        uint256 unsubs = MockSystem(SYSTEM).unsubs();
+
+        vm.expectEmit(true, true, true, true);
+        emit CronEnabled(1, 0, false, 0);
+        _planCreated(BASE, vaultB, 1, makeAddr("payee"), 120, uint64(block.timestamp), 1, 1);
+        assertTrue(rsc.cronOn());
+        assertEq(rsc.activePlans(), 1);
+        assertEq(MockSystem(SYSTEM).subs(), 15); // configured 14 + cron
+
+        vm.expectEmit(true, true, true, true);
+        emit CronDisabled(0, 0, false, 0);
+        _planExecuted(BASE, vaultB, 1, uint64(block.timestamp + 120), 0); // last payment acked
+        assertFalse(rsc.cronOn());
+        assertEq(MockSystem(SYSTEM).unsubs(), unsubs + 1);
+    }
+
+    function test_cronStaysOnWhileAnActionAwaitsAck() public {
+        rsc.setParams(50, 9500, 150, 900, 0, 0);
+        _tick();
+        assertFalse(rsc.cronOn());
+
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 900, 3500);
+        _verdict(BASE, regB, 1, poolB, 1, 1); // -> RebalanceRequested, now unacked
+        assertEq(rsc.pendingActions(), 1);
+        assertTrue(rsc.cronOn());
+
+        _react(_log(BASE, vaultB, rsc.REBALANCED_TOPIC(), 1, uint256(uint160(poolB)), 3, abi.encode(uint256(1), uint256(2))));
+        assertEq(rsc.pendingActions(), 0);
+        assertFalse(rsc.cronOn());
+    }
+
+    function test_watchdogIsOptInAndKeepsCronOn() public {
+        rsc.setParams(50, 9500, 150, 900, 0, 0);
+        _tick();
+        assertFalse(rsc.cronOn());
+
+        rsc.setWatchdog(true);
+        assertTrue(rsc.cronOn());
+        assertEq(rsc.estimatedBurnPerHour(), 30 * (79_000 + 5 * 137_000));
+
+        rsc.setWatchdog(false);
+        assertFalse(rsc.cronOn());
+        assertEq(rsc.estimatedBurnPerHour(), 0);
+    }
+
+    function test_estimatedBurnPerHourIdleIsZero() public {
+        // Nothing pending and no watchdog/rescore: the RSC costs nothing per hour.
+        rsc.setParams(50, 9500, 150, 900, 0, 0);
+        assertEq(rsc.estimatedBurnPerHourWei(1 gwei), 0);
     }
 
     function test_unknownPlanEventDoesNotRevert() public {
@@ -530,5 +612,142 @@ contract RoninReactiveTest is Test {
     function test_unknownChainLogsIgnored() public {
         _rate(777, poolA, 500, 4000);
         assertEq(_cbCount(), 0);
+    }
+
+    // ───────────── request backoff + hourly cap ─────────────
+
+    event RequestSuppressed(uint256 indexed chainId, address indexed pool, string reason);
+
+    function _requestCount() internal view returns (uint256) {
+        return _countSel(reqB, IRequesterCallbacks.requestDecision.selector);
+    }
+
+    function _countSuppressed(Vm.Log[] memory logs, string memory reason) internal pure returns (uint256 n) {
+        bytes32 topic0 = keccak256("RequestSuppressed(uint256,address,string)");
+        bytes32 want = keccak256(bytes(reason));
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] != topic0) continue;
+            if (keccak256(bytes(abi.decode(logs[i].data, (string)))) == want) n++;
+        }
+    }
+
+    function test_repeatedIdenticalEventsProduceOneRequest() public {
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 450, 3500); // gap 50 -> request #1
+        assertEq(_requestCount(), 1);
+
+        vm.recordLogs();
+        _rate(BASE, poolB, 450, 3500); // identical again
+        _rate(BASE, poolB, 450, 3500); // and again
+        _rate(BASE, poolA, 500, 4000);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        assertEq(_requestCount(), 1); // still one
+        assertEq(_countSuppressed(logs, "backoff"), 3);
+    }
+
+    function test_changedRateProducesANewRequest() public {
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 450, 3500); // request #1
+        assertEq(_requestCount(), 1);
+
+        _rate(BASE, poolB, 300, 3500); // the base rate moved by 150 >= spikeBps
+        assertEq(_requestCount(), 2);
+    }
+
+    function test_backoffExpiryProducesANewRequest() public {
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 450, 3500); // request #1
+        vm.warp(block.timestamp + rsc.requestBackoff() - 1);
+        _rate(BASE, poolB, 450, 3500);
+        assertEq(_requestCount(), 1); // still inside the backoff
+
+        vm.warp(block.timestamp + 1);
+        _rate(BASE, poolB, 450, 3500);
+        assertEq(_requestCount(), 2); // backoff over, same rates -> ask again
+    }
+
+    function test_ignoreVerdictRestartsTheBackoff() public {
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 450, 3500); // request #1
+
+        vm.warp(block.timestamp + 200);
+        _verdict(BASE, regB, 1, poolA, 2, 1); // IGNORE -> gate re-armed now
+
+        // 500s after the IGNORE (700s after the request): still inside the restarted backoff
+        vm.warp(block.timestamp + 500);
+        _rate(BASE, poolB, 450, 3500);
+        assertEq(_requestCount(), 1);
+
+        vm.warp(block.timestamp + 100); // exactly the backoff after the IGNORE
+        _rate(BASE, poolB, 450, 3500);
+        assertEq(_requestCount(), 2);
+    }
+
+    function test_vaultSkipRestartsTheBackoff() public {
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 900, 3500);
+        _verdict(BASE, regB, 1, poolB, 1, 1); // ACT -> rebalance callback
+        assertEq(_countSel(vaultB, IVaultCallbacks.rebalance.selector), 1);
+
+        vm.warp(block.timestamp + 200);
+        // vault skipped it: no funds to move
+        _react(_log(BASE, vaultB, rsc.REBALANCE_SKIPPED_TOPIC(), 1, 0, 2, abi.encode(uint256(0), uint256(0))));
+
+        vm.warp(block.timestamp + 500); // inside the backoff restarted by the skip
+        vm.recordLogs();
+        _rate(BASE, poolB, 900, 3500);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(_requestCount(), 1);
+        assertEq(_countSuppressed(logs, "backoff"), 1);
+    }
+
+    function test_hourlyCapStopsRequestsPerChain() public {
+        rsc.setBackoff(600, 2);
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 450, 3500); // request #1
+        _rate(BASE, poolB, 300, 3500); // base moved 150 -> request #2
+        assertEq(_requestCount(), 2);
+        assertEq(rsc.requestsThisHour(BASE), 2);
+
+        vm.expectEmit(true, true, false, true);
+        emit RequestSuppressed(BASE, poolA, "hourly cap");
+        _rate(BASE, poolB, 150, 3500); // would be a new request, but the hour is spent
+
+        assertEq(_requestCount(), 2);
+        assertEq(rsc.requestsThisHour(BASE), 2);
+
+        // a new hour resets the budget
+        vm.warp(block.timestamp + 1 hours);
+        _rate(BASE, poolB, 150, 3500);
+        assertEq(_requestCount(), 3);
+        assertEq(rsc.requestsThisHour(BASE), 1);
+    }
+
+    function test_capIsPerChain() public {
+        _configure(UNI, vaultU, reqU, regU, poolC, poolD);
+        rsc.setBackoff(600, 1);
+
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 450, 3500); // Base request #1 (Base budget now spent)
+        _rate(BASE, poolB, 300, 3500); // Base: suppressed by the cap
+        assertEq(_requestCount(), 1);
+
+        _rate(UNI, poolC, 700, 4000);
+        _rate(UNI, poolD, 600, 3500); // Unichain has its own budget
+        assertEq(_countSel(reqU, IRequesterCallbacks.requestDecision.selector), 1);
+    }
+
+    function test_setBackoffRejectsBadParams() public {
+        vm.expectRevert("backoff too short");
+        rsc.setBackoff(1, 10);
+        vm.expectRevert("bad hourly cap");
+        rsc.setBackoff(600, 0);
+    }
+
+    function test_setBackoffIsOwnerOnly() public {
+        vm.prank(makeAddr("stranger"));
+        vm.expectRevert("only owner");
+        rsc.setBackoff(600, 10);
     }
 }

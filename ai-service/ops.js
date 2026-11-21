@@ -43,6 +43,13 @@ const payAbi = parseAbi([
   "function depositTo(address) payable",
 ]);
 
+const rscAbi = parseAbi([
+  "function estimatedBurnPerHour() view returns (uint256)",
+  "function cronOn() view returns (bool)",
+  "function activePlans() view returns (uint256)",
+  "function pendingActions() view returns (uint256)",
+]);
+
 const mk = (id, name, symbol, rpc) => {
   const chain = defineChain({ id, name, nativeCurrency: { name: symbol, symbol, decimals: 18 }, rpcUrls: { default: { http: [rpc] } } });
   return { pub: createPublicClient({ chain, transport: http(rpc) }), wallet: createWalletClient({ account, chain, transport: http(rpc) }) };
@@ -84,6 +91,14 @@ async function check({ label, client, payer, addr, minWei, topupWei, symbol }) {
     debt: formatEther(debt),
     state: debt > 0n ? "IN_DEBT" : reserves < minWei ? "LOW" : "OK",
   };
+  if (debt > 0n) {
+    // Loud on purpose: with debt > 0 Reactive stops executing react() AND delivering callbacks, so the
+    // whole loop is silently dead until it is paid off. Never let this scroll by unnoticed.
+    console.error(
+      `\n!!! DEBT on ${label} (${addr}): ${formatEther(debt)} ${symbol} owed — execution is STOPPED until covered !!!\n`,
+    );
+    row.alert = "DEBT: execution stopped";
+  }
   if (row.state !== "OK") {
     try {
       const mine = await client.pub.getBalance({ address: account.address });
@@ -141,7 +156,24 @@ async function cycle() {
   status.cycle++;
   const targets = [];
   try {
-    targets.push(await check({ label: "RSC (Lasna)", client: lasna, payer: SYSTEM, addr: RSC, minWei: MIN_REACT, topupWei: TOPUP_REACT, symbol: "lREACT" }));
+    const rscRow = await check({ label: "RSC (Lasna)", client: lasna, payer: SYSTEM, addr: RSC, minWei: MIN_REACT, topupWei: TOPUP_REACT, symbol: "lREACT" });
+    try {
+      // The RSC's own estimate of what a cron tick costs at the per-tick caps, so the top-up threshold can
+      // be sanity-checked against the burn instead of guessed.
+      const [gasPerHour, cronOn, plans, actions] = await Promise.all([
+        lasna.pub.readContract({ address: RSC, abi: rscAbi, functionName: "estimatedBurnPerHour" }),
+        lasna.pub.readContract({ address: RSC, abi: rscAbi, functionName: "cronOn" }),
+        lasna.pub.readContract({ address: RSC, abi: rscAbi, functionName: "activePlans" }),
+        lasna.pub.readContract({ address: RSC, abi: rscAbi, functionName: "pendingActions" }),
+      ]);
+      rscRow.cron = { on: cronOn, gasPerHour: Number(gasPerHour), activePlans: Number(plans), pendingActions: Number(actions) };
+      if (!cronOn && (plans > 0n || actions > 0n)) {
+        console.error(`!!! CRON is OFF but the RSC still has work (plans=${plans}, unacked=${actions}) — check the subscription !!!`);
+      }
+    } catch {
+      /* older build without the estimator: ignore */
+    }
+    targets.push(rscRow);
     for (const c of chains) {
       targets.push(await check({ label: `Vault (${c.name})`, client: c, payer: c.proxy, addr: c.vault, minWei: MIN_ETH, topupWei: TOPUP_ETH, symbol: "ETH" }));
       if (c.requester)
