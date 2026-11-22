@@ -15,6 +15,7 @@ broadcast/
 node_modules/
 ai-service/latency.jsonl
 ui/dist/
+*.tsbuildinfo
 
 # Deploy logs kept locally for evidence, not committed
 deploy-out/

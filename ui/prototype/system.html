@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ronin component sheet</title>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#070b0a;--card:#0f1615;--c2:#151f1d;--ink:#eef4f2;--mut:#8fa09c;--line:#1f2c29;--teal:#3fe0c5;--acc:#3fe0c5;--btn:#3fe0c5;--btnT:#04201c;--amb:#f2b84b;--red:#ff7a7a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:light){:root{--bg:#eef3f1;--card:#fff;--c2:#f3f7f6;--ink:#0a0f0e;--mut:#5d6a67;--line:#dfe8e5;--acc:#0c7a6a;--amb:#a86b00;--red:#c93636}}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(900px 480px at 85% -8%,rgba(63,224,197,.16),transparent 70%),var(--bg);color:var(--ink);font:400 15px/1.5 "Hanken Grotesk",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.w{max-width:1100px;margin:0 auto;padding:56px 24px 90px}
+h1{font-size:clamp(40px,7vw,84px);font-weight:500;letter-spacing:-.04em;line-height:1;margin:0}
+h2{font-size:30px;font-weight:500;letter-spacing:-.03em;margin:78px 0 6px}
+p{margin:0}.m{color:var(--mut)}.s{font-size:13px}
+.g{display:grid;gap:14px;margin-top:22px}.c2{grid-template-columns:1fr 1fr}.c3{grid-template-columns:repeat(3,1fr)}.c4{grid-template-columns:repeat(4,1fr)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:24px;padding:22px}
+.sw{height:74px;border-radius:16px;border:1px solid var(--line);margin-bottom:10px}
+code{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--mut);display:block;margin-top:6px;word-break:break-word}
+.btn{border:0;border-radius:99px;height:42px;padding:0 20px;background:var(--btn);color:var(--btnT);font:500 15px "Hanken Grotesk";cursor:pointer}
+.btn.o{background:none;border:1px solid var(--line);color:var(--ink)}.btn.sm{height:34px;padding:0 14px;font-size:13px}.btn:disabled{opacity:.4}
+.btn.g2{background:rgba(4,7,6,.6);border:1px solid rgba(255,255,255,.4);color:#fff}
+.pill{display:inline-flex;align-items:center;gap:7px;border-radius:99px;padding:5px 12px;font-size:13px;font-weight:500;background:rgba(63,224,197,.14);color:var(--acc)}.pill.w{background:rgba(242,184,75,.15);color:var(--amb)}.pill.r{background:rgba(255,122,122,.15);color:var(--red)}.pill.n{background:var(--c2);color:var(--mut)}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px}.wrap{display:flex;gap:10px;flex-wrap:wrap}
+.ic{width:34px;height:34px;border-radius:12px;background:var(--c2);display:grid;place-items:center;color:var(--acc);flex:none}
+.li{display:flex;justify-content:space-between;gap:10px;align-items:center}.ev{display:flex;gap:12px;align-items:center}
+.sr{position:relative;display:grid;grid-template-columns:28px 1fr auto;gap:14px;align-items:center;padding:14px 16px;border:1px solid var(--line);border-radius:18px;margin-bottom:8px;overflow:hidden;background:var(--card)}
+.sr.wt{opacity:.55}.sr.k{border-color:var(--teal)}.sr::after{content:"";position:absolute;left:0;bottom:0;height:2px;background:var(--teal);width:0}.sr.rn::after{animation:fill 4s linear infinite}.sr.dn::after{width:100%;opacity:.25}
+@keyframes fill{to{width:100%}}
+.mk{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--mut);color:var(--mut)}.mk.dn{background:var(--teal);border-color:var(--teal);color:#04201c}.mk.fl{border-color:var(--red);color:var(--red)}
+.sp{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--acc);border-radius:50%;animation:rot .8s linear infinite}@keyframes rot{to{transform:rotate(360deg)}}
+.cm{height:8px;border-radius:9px;background:var(--c2);overflow:hidden;flex:1}.cm i{display:block;height:100%;width:var(--w);background:linear-gradient(90deg,#1aa391,var(--teal));border-radius:9px;animation:grow 2s cubic-bezier(.2,.8,.2,1) infinite alternate}@keyframes grow{from{width:0}}
+.bn{display:flex;gap:14px;align-items:center;border-radius:18px;padding:14px 18px;background:rgba(242,184,75,.12);border:1px solid rgba(242,184,75,.4)}.bn.i{background:rgba(63,224,197,.08);border-color:rgba(63,224,197,.3)}.bn.e{background:rgba(255,122,122,.1);border-color:var(--red)}
+.big{font-size:40px;letter-spacing:-.045em;line-height:1.05}
+.kv{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line);font-size:14px}.kv span{display:block;color:var(--mut);font-size:12px}
+.seg{display:inline-flex;background:var(--c2);border-radius:99px;padding:4px}.seg b{font-weight:500;border-radius:99px;padding:7px 18px;color:var(--mut)}.seg b.on{background:var(--btn);color:var(--btnT)}
+.gl{height:120px;border-radius:20px;background:linear-gradient(180deg,#040706 0%,#050908 34%,#08312d 80%,#4fd6c0 93%,var(--bg) 99.5%);margin-bottom:10px}
+.rg{height:120px;border-radius:20px;background:#040706;display:grid;place-items:center;margin-bottom:10px}.rg div{width:90px;height:90px;border-radius:50%;background:conic-gradient(from 0deg,#0a1412,#2b7f74 12%,#e7fbf6 20%,#5b4be0 28%,#0a1412 40%,#1b2d2a 55%,#cdeee7 68%,#ff9ad0 76%,#0a1412 88%,#0a1412);-webkit-mask:radial-gradient(circle,transparent 0 46%,#000 47%);mask:radial-gradient(circle,transparent 0 46%,#000 47%);animation:rot 20s linear infinite}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;padding:11px 8px;border-top:1px solid var(--line)}th{border:0;color:var(--mut);font-weight:400;font-size:13px}
+@media(max-width:800px){.c2,.c3,.c4{grid-template-columns:1fr 1fr}}@media(max-width:560px){.c2,.c3,.c4{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important}}
+</style></head><body><div class="w">
+<div class="m s">Ronin design system, version 1</div>
+<h1 style="margin-top:14px">One system for the site and the app.</h1>
+<p class="m" style="margin-top:16px;max-width:560px">Pulled from the approved landing page. It follows your system's light or dark setting, so switch yours to see both.</p>
+
+<h2>Colour</h2><p class="m">Teal is the only accent. Amber means a pause. Red means something needs attention.</p>
+<div class="g c4" id="sw"></div>
+<div class="g c2"><div class="card"><div class="gl"></div><b>Hero glow</b><code>linear-gradient(180deg, #040706 0%, #050908 34%, #08312d 80%, #4fd6c0 93%, page 99.5%)</code><p class="m s" style="margin-top:8px">Near-black to teal. Keep text and buttons above the bright band.</p></div>
+<div class="card"><div class="rg"><div></div></div><b>Chrome ring</b><code>conic-gradient(#0a1412, #2b7f74, #e7fbf6, #5b4be0, #1b2d2a, #cdeee7, #ff9ad0) with a ring mask at 46%</code><p class="m s" style="margin-top:8px">Hero object. Rotates slowly, moves with the pointer.</p></div></div>
+
+<h2>Type</h2><p class="m">Hanken Grotesk. Tight tracking on large sizes, regular weight 400 for numbers, 500 for headings.</p>
+<div class="card" style="margin-top:22px"><table><tr><th>Role</th><th>Sample</th><th>Size, tracking</th></tr>
+<tr><td class="m">Display</td><td style="font-size:56px;letter-spacing:-.04em;line-height:1">Deposit once.</td><td class="m s">up to 138px, -0.04em</td></tr>
+<tr><td class="m">Page title</td><td style="font-size:34px;letter-spacing:-.035em">Your vault</td><td class="m s">34px, -0.035em</td></tr>
+<tr><td class="m">Figure</td><td style="font-size:40px;letter-spacing:-.045em">1,284.50</td><td class="m s">40 to 56px, -0.045em</td></tr>
+<tr><td class="m">Heading</td><td style="font-size:18px;font-weight:500">Where your money is</td><td class="m s">18px, -0.02em</td></tr>
+<tr><td class="m">Body</td><td>Ronin finds the best yield and pays your bills.</td><td class="m s">15px</td></tr>
+<tr><td class="m">Small</td><td class="s m">Updated 12 s ago</td><td class="m s">13px</td></tr></table></div>
+
+<h2>Spacing and shape</h2>
+<div class="g c4"><div class="card"><b>Radius</b><p class="m s" style="margin-top:6px">Page cards 24 to 28<br>Inner rows 18<br>Inputs 14 to 18<br>Pills and buttons 99</p></div><div class="card"><b>Spacing</b><p class="m s" style="margin-top:6px">4, 8, 12, 16, 24, 32<br>Card padding 24<br>Grid gap 16</p></div><div class="card"><b>Borders</b><p class="m s" style="margin-top:6px">1px, line colour<br>Active border is teal<br>No heavy shadows</p></div><div class="card"><b>Layout</b><p class="m s" style="margin-top:6px">Max width 1180<br>Two columns on laptop<br>One column under 860</p></div></div>
+
+<h2>Buttons</h2>
+<div class="card" style="margin-top:22px"><div class="wrap"><button class="btn">Launch app</button><button class="btn g2">View live proof</button><button class="btn o">Cancel order</button><button class="btn sm">Connect wallet</button><button class="btn o sm">History</button><button class="btn" disabled>Deposit</button></div><p class="m s" style="margin-top:12px">Primary is teal with dark text. The glass button is for dark hero areas only. Disabled always explains why nearby.</p></div>
+
+<h2>Status pill</h2><p class="m">Every status pairs an icon with a word. Colour never works alone.</p>
+<div class="card" style="margin-top:22px"><div class="wrap" id="pills"></div></div>
+
+<h2>Activity row</h2>
+<div class="card" style="margin-top:22px"><div class="li"><div class="ev"><div class="ic" id="i1"></div><div>Moved your money to a better pool<div class="m s">12 s ago</div></div></div><a style="color:var(--acc)">0x9c1e&hellip;4b07</a></div></div>
+
+<h2>Pipeline step</h2><p class="m">Waiting, running, done, failed. The step that moves funds gets a teal border.</p>
+<div class="g c2"><div><div class="sr wt"><div class="mk"></div><div><b>1 Waiting</b><div class="m s">Not started</div></div><div class="m s">Waiting</div></div>
+<div class="sr rn"><div class="mk"><div class="sp"></div></div><div><b>4 AI reviews request</b><div class="m s">AI is reviewing, 3 s</div></div><div class="m s">Running</div></div></div>
+<div><div class="sr dn k"><div class="mk dn" id="i2"></div><div><b>7 Vault checks, moves</b><div class="m s">The only step that moves funds</div></div><div class="m s">Done, 07:24:11</div></div>
+<div class="sr"><div class="mk fl" id="i3"></div><div><b>5 Verdict posted</b><div class="m s">No answer after 3 attempts</div></div><div style="color:var(--red)" class="s">Needs attention</div></div></div></div>
+
+<h2>Confidence meter</h2>
+<div class="card" style="margin-top:22px"><div class="row" style="gap:16px"><span class="m s">Confidence</span><div class="cm" style="--w:87%"><i></i></div><b>87%</b></div></div>
+
+<h2>Order card</h2>
+<div class="g c2"><div class="card"><div class="row"><div><b style="font-size:19px">Rent</b> <span class="m s">0x4f2a&hellip;c91e copy</span></div><span class="pill" id="p1"></span></div><div class="big" style="margin-top:8px">250.00 <span class="m" style="font-size:18px">USDC</span></div><div class="kv"><div><span>Period</span>Every 7 days</div><div><span>Payments left</span>6</div><div><span>Next due</span>in 2 d 3 h</div></div></div>
+<div class="card"><div class="seg"><b class="on">Yield only</b><b>Yield, then principal</b></div><p class="m s" style="margin-top:12px">Segmented control. The selector slides with a small spring.</p><div class="bn i" style="margin-top:14px"><span>Available yield right now: <b>34.50 USDC</b></span></div></div></div>
+
+<h2>Banners</h2>
+<div class="g"><div class="bn i"><span><b>Info.</b> Sample data. Connect to see yours.</span></div><div class="bn"><span><b>Warning.</b> Vault paused by the AI safety check. Withdrawals and payouts keep working.</span></div><div class="bn e"><span><b>Error.</b> Automation is paused until funded.</span></div></div>
+
+<h2>Motion</h2><p class="m">Calm by default. Motion explains cause and effect, and never loops without a reason.</p>
+<div class="card" style="margin-top:22px"><table><tr><th>Where</th><th>What happens</th><th>Timing</th></tr>
+<tr><td>Page entry</td><td>Fade and rise, 90 ms stagger between items</td><td class="m">900 ms, cubic-bezier(.2,.8,.2,1)</td></tr>
+<tr><td>Stat numbers</td><td>Count up once on entry, curve draws in</td><td class="m">1.8 s ease out, curve 2.4 s</td></tr>
+<tr><td>Live feed row</td><td>Slides down from 10 px above, fades in</td><td class="m">600 ms</td></tr>
+<tr><td>Pipeline step</td><td>Marker fills, thin bar crosses the row for the step's duration, then stays at 25%</td><td class="m">Linear, equals step time</td></tr>
+<tr><td>Segmented control</td><td>Selector slides with a slight overshoot</td><td class="m">450 ms, cubic-bezier(.3,1.2,.4,1)</td></tr>
+<tr><td>Menus</td><td>Fade, 6 px drop, scale from .98</td><td class="m">250 ms</td></tr>
+<tr><td>Hero ring</td><td>Slow tilt, shifts 26 px with the pointer</td><td class="m">14 s loop, 600 ms follow</td></tr>
+<tr><td>Reduced motion</td><td>All of the above switch off. State changes still show.</td><td class="m">prefers-reduced-motion</td></tr></table></div>
+</div>
+<script>
+var P={ok:'M5 12l4 4 10-10',x:'M6 6l12 12M18 6L6 18',pause:'M8 6v12M16 6v12',retry:'M20 12a8 8 0 1 1-2.5-5.8M20 4v5h-5',move:'M4 8h13m0 0l-4-4m4 4l-4 4M20 16H7m0 0l4 4m-4-4l4-4'};
+function I(k,s){return '<svg viewBox="0 0 24 24" width="'+(s||18)+'" height="'+(s||18)+'" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="'+P[k]+'"/></svg>'}
+var C=[['Page','--bg','#070b0a'],['Card','--card','#0f1615'],['Inner surface','--c2','#151f1d'],['Line','--line','#1f2c29'],['Text','--ink','#eef4f2'],['Muted text','--mut','#8fa09c'],['Teal accent','--teal','#3fe0c5'],['Amber, pause','--amb','#f2b84b'],['Red, attention','--red','#ff7a7a']];
+document.getElementById('sw').innerHTML=C.map(function(c){return '<div class="card" style="padding:14px"><div class="sw" style="background:var('+c[1]+')"></div><b class="s">'+c[0]+'</b><code>'+c[1]+'</code><code>dark '+c[2]+'</code></div>'}).join('');
+var PL=[['','ok','Active'],['w','pause','Paused by AI'],['r','x','Pool exited'],['w','retry','Recovering'],['n','pause','Skipped: No yield yet'],['w','retry','Retrying (attempt 2 of 3)'],['r','x','Needs attention'],['n','ok','Completed'],['n','','Mock pool (demo)']];
+document.getElementById('pills').innerHTML=PL.map(function(p){return '<span class="pill '+p[0]+'">'+(p[1]?I(p[1],14):'')+' '+p[2]+'</span>'}).join('');
+document.getElementById('i1').innerHTML=I('move');document.getElementById('i2').innerHTML=I('ok',14);document.getElementById('i3').innerHTML=I('x',14);document.getElementById('p1').innerHTML=I('ok',14)+' Active';
+</script></body></html>
