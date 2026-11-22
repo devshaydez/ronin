@@ -1,72 +1,171 @@
-# Ronin: on-chain proof of the workflow
+# Ronin Phase B: measured loop latency
 
-Generated 2026-11-20T22:34:14.404Z from Lasna blocks 8842382..8845421.
-Reactive contract (RSC): `0x1827b78acebb5085cfb7c6dcc474414983348ec9` on Reactive Lasna (5318007).
+Generated 2026-11-22 from the events of the fresh Phase B deployment.
 
-Each row is one **complete loop**: the **origin** transaction that emitted the event, the **Reactive** transaction on Lasna that handled it, and the **destination** transaction the callback produced, with the end-to-end latency. Lasna does not post callback results back (`getCallbacks` is empty on this network), so the destination tx is the vault transaction that answered the callback, matched by verdict id. A standing-order payout counts as a loop too: the origin tx is the vault's `PlanCreated`, the Reactive tx is `PlanScheduled`, and the destination is the vault's `PlanExecuted`.
+| Contract | Address |
+|---|---|
+| Reactive (RSC, Lasna 5318007) | `0x69107baF143C38722744a09e3f27c3c076469d5f` |
+| Base Sepolia vault | `0xCD50707FED3Ef829b0965D6DDCF0Dab56e5cce66` |
+| Base Sepolia requester | `0xd3f0BD4a232AD8061DD119564AF64D8b6f340eBb` |
+| Unichain Sepolia vault | `0xce75a97917c8fd52eA30684F0988FAe4485D64cD` |
+| Unichain Sepolia requester | `0xFcC603B48675Ae138890BF4A155A13A378DAA5B5` |
 
-| Reaction | Origin tx | Reactive tx (Lasna) | Destination tx | Origin→Reactive | Origin→Destination |
-|---|---|---|---|---|---|
-| VerdictSeen, RebalanceRequested | [0xe84308cf…12db3f](https://sepolia.basescan.org/tx/0xe84308cfc02f5affb956420430c6040276ae6163eccd13546ed44286cd12db3f) | `0xa0093bf642c3e2918b1cdfc5be62f9c86b69d6aba59c1102df557fa306b627f6` | [0xd7783e6d…c7dbae](https://sepolia.basescan.org/tx/0xd7783e6d84aa15308b0602429e8c2755891098694e3ba9ccf041938b24c7dbae) (RebalanceSkipped) | 0s | 1s |
-| VerdictSeen, RebalanceRequested | [0x4706f367…56ec4a](https://sepolia.basescan.org/tx/0x4706f367cf7fa9963fc41307afd489e57fbe2bf20d116c4f09d6a408bb56ec4a) | `0xe781bf098475027ea4be6f5f93539749a5359b962ab82284d67a500a96c5d6c9` | [0xdcd85f31…221668](https://sepolia.basescan.org/tx/0xdcd85f31144ef70e54b27e3ddb0b120658b796665207710cfd9e20d39f221668) (Rebalanced) | 0s | 1s |
-| VerdictSeen, RebalanceRequested | [0xe73f4f2f…347a5e](https://sepolia.basescan.org/tx/0xe73f4f2f3ecb10798422dfc0842dd88886376080168dce9b05dd55283a347a5e) | `0x9eea2c97682b6c6f4642234b26e625e830c37dc38dc917ee69d9861731facbdf` | [0x5e8ce167…f2a884](https://sepolia.basescan.org/tx/0x5e8ce167bc4fc162ddf572cad988e395dcfab9be5967a8ce1d972acc43f2a884) (Rebalanced) | 0s | 220s |
-| RateObserved, BreakerTripped | [0xe3acac07…d3d2b8](https://sepolia.basescan.org/tx/0xe3acac07c90bb9033728d92365a57a091a3bb4c4013048cbb8b25d8b02d3d2b8) | `0x44e5c57584df2aaa9fbf4f940a1e4b3cec11a993c696773cf4dd301f69fdd245` | [0xe5eb89f8…c4cf3d](https://sepolia.basescan.org/tx/0xe5eb89f83de7123503738e40e7d91324bef09f468fb80a86b86e022fcac4cf3d) (EmergencyExit) | 0s | 2s |
-| PlanCreated → PlanExecuted | [0x99450f6d…3b3d3d](https://sepolia.basescan.org/tx/0x99450f6d0790ccf5e5749488d17ec4a5c9864564200ff485397f7890453b3d3d) | `0x8d912d5588e520d697d07614f72a60f4d8f1eb8f37b50c42aa540cadb11e3b7e` | [0xa9ca22fd…78a637](https://sepolia.basescan.org/tx/0xa9ca22fd293528b2329b23d4924aa0d5269909e45bce7b457b53befa8978a637) (PlanExecuted) | 0s | 193s |
-| PlanCreated → PlanExecuted | [0x2d370988…7c025d](https://sepolia.basescan.org/tx/0x2d370988d95bd4eaf9c8f49a8b513e9729f04ad1c0b02cc849c1c85d987c025d) | `0xc4daddbe6bd72136c9a744c42598f7917a1ff446d65adbb1a2ed1c1ad229f522` | [0x64f6928e…e1586a](https://sepolia.basescan.org/tx/0x64f6928ead16a533dfbe20627749f2b41b8654215c2bb3b6363a1ff6a2e1586a) (PlanExecuted) | 0s | 193s |
-| PlanCreated → PlanExecuted | [0x06abd09a…903a49](https://sepolia.basescan.org/tx/0x06abd09a4c1de842e89e41d71d0b92d13d97dc1ed71744418abf40a673903a49) | `0x27e67f2570d12deb92840ef3f7692e7985f47f5ca562f57c45a2d130247b4a53` | [0x706732a6…f6aa2e](https://sepolia.basescan.org/tx/0x706732a65b9bf12f43aed3cbedd36bfef6c663b40fad6d7477cf0eadeff6aa2e) (PlanExecuted) | 0s | 193s |
-| PlanCreated → PlanExecuted | [0x876a51b3…b62752](https://sepolia.basescan.org/tx/0x876a51b3782973f8919309096438adcc24bfde3fce5fd83b6654be7cddb62752) | `0x50331aa457e9d4a511034847b308b7a3de828f8dc3591cffcf00434fa70f8ab1` | [0x78bd3aac…5939e9](https://sepolia.basescan.org/tx/0x78bd3aac4feeffa6822ee79b019bce79f211efcbc6f52168a16225587a5939e9) (PlanExecuted) | 0s | 301s |
-| PlanCreated → PlanExecuted | [0x240db0cf…629087](https://sepolia.basescan.org/tx/0x240db0cffdb5bba28c3a1f384a2dea177578ddfa54d4131f3c868d3ac8629087) | `0xd3b27524521e9014072401a4cdceb491ccd4f896b0747159cf1bf8ae2f40b2d0` | [0x41033657…e116c9](https://sepolia.basescan.org/tx/0x4103365731ccdca839b2605f5b03e897bdaa33b24c77c4d2a9938d47cbe116c9) (PlanExecuted) | 0s | 301s |
-| PlanCreated → PlanExecuted | [0xad123421…d323c3](https://sepolia.basescan.org/tx/0xad123421d4105b57aec1f0b78bb1b93a364eb806638ecb6602b4175fecd323c3) | `0xf55bcd405fc20fd8fcc40812226ddc17fddd55e1572494ee12fbfe4fbe548933` | [0x6038e786…dc1a6d](https://sepolia.basescan.org/tx/0x6038e786f02d3679fd1ef1858dd8c53f78e91cee7e3b98d09db4a38480dc1a6d) (PlanExecuted) | 0s | 301s |
-| PlanCreated → PlanExecuted | [0x99450f6d…3b3d3d](https://sepolia.basescan.org/tx/0x99450f6d0790ccf5e5749488d17ec4a5c9864564200ff485397f7890453b3d3d) | `0x8d912d5588e520d697d07614f72a60f4d8f1eb8f37b50c42aa540cadb11e3b7e` | [0xd3994e59…a846cf](https://sepolia.basescan.org/tx/0xd3994e594a7497218ccc31f19270b0b0076eab438154d0ec1968acd1b0a846cf) (PlanExecuted) | 0s | 404s |
-| PlanCreated → PlanExecuted | [0x2d370988…7c025d](https://sepolia.basescan.org/tx/0x2d370988d95bd4eaf9c8f49a8b513e9729f04ad1c0b02cc849c1c85d987c025d) | `0xc4daddbe6bd72136c9a744c42598f7917a1ff446d65adbb1a2ed1c1ad229f522` | [0x98458779…64c6fa](https://sepolia.basescan.org/tx/0x984587797cdc24d217939adb7997e542a02c49983cb986ea41ee41e53c64c6fa) (PlanExecuted) | 0s | 404s |
-| PlanCreated → PlanExecuted | [0x06abd09a…903a49](https://sepolia.basescan.org/tx/0x06abd09a4c1de842e89e41d71d0b92d13d97dc1ed71744418abf40a673903a49) | `0x27e67f2570d12deb92840ef3f7692e7985f47f5ca562f57c45a2d130247b4a53` | [0xde9c3ccb…c62f67](https://sepolia.basescan.org/tx/0xde9c3ccb0f1a264c04c62320833976ee0b89e9aceb80d59f884473b339c62f67) (PlanExecuted) | 0s | 404s |
-| PlanCreated → PlanExecuted | [0x876a51b3…b62752](https://sepolia.basescan.org/tx/0x876a51b3782973f8919309096438adcc24bfde3fce5fd83b6654be7cddb62752) | `0x50331aa457e9d4a511034847b308b7a3de828f8dc3591cffcf00434fa70f8ab1` | [0x5eb49b9d…95f3a0](https://sepolia.basescan.org/tx/0x5eb49b9d50f871dd08fe7e7a397a4628984cca9a83549742e411cdbe8795f3a0) (PlanExecuted) | 0s | 511s |
-| PlanCreated → PlanExecuted | [0x240db0cf…629087](https://sepolia.basescan.org/tx/0x240db0cffdb5bba28c3a1f384a2dea177578ddfa54d4131f3c868d3ac8629087) | `0xd3b27524521e9014072401a4cdceb491ccd4f896b0747159cf1bf8ae2f40b2d0` | [0x2ad84d47…9bed06](https://sepolia.basescan.org/tx/0x2ad84d479d512e710022c688e8d41d957aa4ff8475231e41f5e1640f099bed06) (PlanExecuted) | 0s | 511s |
-| PlanCreated → PlanExecuted | [0xad123421…d323c3](https://sepolia.basescan.org/tx/0xad123421d4105b57aec1f0b78bb1b93a364eb806638ecb6602b4175fecd323c3) | `0xf55bcd405fc20fd8fcc40812226ddc17fddd55e1572494ee12fbfe4fbe548933` | [0x354d8744…dddfcb](https://sepolia.basescan.org/tx/0x354d8744b2c575c41b06faec0c61a6bcbe96aaadc833358e17bdfa948edddfcb) (PlanExecuted) | 0s | 510s |
-| PlanCreated → PlanExecuted | [0x99450f6d…3b3d3d](https://sepolia.basescan.org/tx/0x99450f6d0790ccf5e5749488d17ec4a5c9864564200ff485397f7890453b3d3d) | `0x8d912d5588e520d697d07614f72a60f4d8f1eb8f37b50c42aa540cadb11e3b7e` | [0xcb661a43…73200a](https://sepolia.basescan.org/tx/0xcb661a438d92443b9cd132eda5d29835e6b09789089722eadb43ec074173200a) (PlanExecuted) | 0s | 614s |
-| PlanCreated → PlanExecuted | [0x2d370988…7c025d](https://sepolia.basescan.org/tx/0x2d370988d95bd4eaf9c8f49a8b513e9729f04ad1c0b02cc849c1c85d987c025d) | `0xc4daddbe6bd72136c9a744c42598f7917a1ff446d65adbb1a2ed1c1ad229f522` | [0x42cc7302…8d0e1f](https://sepolia.basescan.org/tx/0x42cc730280bd4cd8cc42cde57ffa47f29582849c596ca2cba94d6551de8d0e1f) (PlanExecuted) | 0s | 614s |
-| PlanCreated → PlanExecuted | [0x06abd09a…903a49](https://sepolia.basescan.org/tx/0x06abd09a4c1de842e89e41d71d0b92d13d97dc1ed71744418abf40a673903a49) | `0x27e67f2570d12deb92840ef3f7692e7985f47f5ca562f57c45a2d130247b4a53` | [0x27ac3d76…6ca9d1](https://sepolia.basescan.org/tx/0x27ac3d7692260002907288424ea8db6a37636e3a772436ee9c68b8bfb06ca9d1) (PlanExecuted) | 0s | 614s |
-| PlanCreated → PlanExecuted | [0x876a51b3…b62752](https://sepolia.basescan.org/tx/0x876a51b3782973f8919309096438adcc24bfde3fce5fd83b6654be7cddb62752) | `0x50331aa457e9d4a511034847b308b7a3de828f8dc3591cffcf00434fa70f8ab1` | [0x75cd09f1…60836b](https://sepolia.basescan.org/tx/0x75cd09f11dce016428b818a6a43bdef1ee7833d9657cbf8571e83f879760836b) (PlanExecuted) | 0s | 722s |
-| PlanCreated → PlanExecuted | [0x240db0cf…629087](https://sepolia.basescan.org/tx/0x240db0cffdb5bba28c3a1f384a2dea177578ddfa54d4131f3c868d3ac8629087) | `0xd3b27524521e9014072401a4cdceb491ccd4f896b0747159cf1bf8ae2f40b2d0` | [0x50c65278…84dcd6](https://sepolia.basescan.org/tx/0x50c6527860e06de005dc719d4bd3ea6fe5c83e113427f65f3ef97260b684dcd6) (PlanExecuted) | 0s | 722s |
-| PlanCreated → PlanExecuted | [0xad123421…d323c3](https://sepolia.basescan.org/tx/0xad123421d4105b57aec1f0b78bb1b93a364eb806638ecb6602b4175fecd323c3) | `0xf55bcd405fc20fd8fcc40812226ddc17fddd55e1572494ee12fbfe4fbe548933` | [0x7e680ff4…894219](https://sepolia.basescan.org/tx/0x7e680ff4a9883828912e21298ee4a1b2061f3e9d8f808bb4ceb3736298894219) (PlanExecuted) | 0s | 722s |
+Windows scanned: Lasna `8,980,238..8,995,629`, Unichain `68,504,320..68,521,307`, Base `62,173,780..62,182,500`.
 
-**22** complete loops, of which **18** are standing-order payouts and **4** are AI verdict loops.
+## Method
 
-Refused or ignored: **0** (one line, not one row each: AI `IGNORE` or a verdict the RSC skipped, so there is no destination tx). The AI path in this window: **5** `DecisionRequestSent`, **4** `VerdictSeen`, **4** `RebalanceRequested`, **3** verdict destination txs; **84** `RequestSuppressed` (backoff / cooldown / hourly cap).
+- **Origin tx** is the target pool's `RateUpdated` transaction (the `setRate` that produced the `RateObserved`).
+- **Reactive tx** is the Lasna transaction that emitted `RebalanceRequested` for the verdict.
+- **Destination tx** is the vault's `Rebalanced` with the same `verdictId`.
+- **Request → Rebalanced** is `LoopClosed.requestToRebalanceSecs`, measured from `DecisionRequested` to
+  `Rebalanced`, so it includes model inference, verdict posting and both callbacks.
+- Payout origin is the vault's `PlanCreated`; the Reactive side is `PlanScheduled`; destination is each
+  `PlanExecuted`. `Due → executed` uses the plan's 120 s cadence (`nextDue` of the previous step) and shows
+  execution lateness rather than the intended wait.
 
-Ack/retry in this window: **4** `ActionRetried`, **1** `ActionStuck`.
+The RSC produced **13** `Rebalanced` events. The table uses the 10 most recent loops where the triggering
+`RateUpdated` and the destination `Rebalanced` both resolve cleanly; one duplicate F rebalance and the first B
+loop (no `RateUpdated` inside the queried window) are excluded. Verdict 19 is also not in this table: it was
+retried and ended in `RebalanceSkipped`, not `Rebalanced` (see below).
 
-## Standing orders (`Plan*` events on the origin vaults)
-Every payout above appears in the main table as a complete loop (`PlanCreated` → `PlanScheduled` → `PlanExecuted`). This table is the raw event stream behind those loops.
+## AI-gated rebalances (n = 10)
 
-| Chain | Event | Plan | Detail | Destination tx |
+| Verdict | Origin → Reactive | Origin → Destination | Request → Rebalanced |
+|---|---|---|---|
+| 9 | 19 s | 22 s | 19 s |
+| 10 | 19 s | 22 s | 18 s |
+| 11 | 23 s | 26 s | 23 s |
+| 15 | 17 s | 20 s | 18 s |
+| 20 | 23 s | 26 s | 24 s |
+| 21 | 17 s | 19 s | 17 s |
+| 22 | 19 s | 22 s | 20 s |
+| 23 | 22 s | 25 s | 23 s |
+| 24 | 18 s | 21 s | 20 s |
+| 28 | 23 s | 26 s | 24 s |
+| **Median** | **19 s** | **22 s** | **20 s** |
+| **Worst** | **23 s** | **26 s** | **24 s** |
+
+## Standing-order payouts (n = 10, plan #1: 1 USDC / 120 s, YIELD_THEN_PRINCIPAL)
+
+`PlanCreated → PlanScheduled` took **<1 s** (the two chains' block clocks differ by one second).
+
+| Payout | Origin → Destination | Due → Executed |
+|---|---|---|
+| 1 | 174 s | 54 s |
+| 2 | 279 s | 39 s |
+| 3 | 385 s | 25 s |
+| 4 | 491 s | 11 s |
+| 5 | 702 s | 102 s |
+| 6 | 808 s | 88 s |
+| 7 | 914 s | 74 s |
+| 8 | 1019 s | 59 s |
+| 9 | 1125 s | 45 s |
+| 10 | 1230 s | 30 s |
+| **Median** | **755 s** | **50 s** |
+| **Worst** | **1230 s** | **102 s** |
+
+Origin → destination includes the deliberate 120 s payout spacing; all ten executed, with no skipped or expired
+payouts.
+
+## Payout accounting (plan #1, `YIELD_THEN_PRINCIPAL`)
+
+Read at the Base block before the first payout and at each payout block through the Tenderly archive gateway
+(`costBasis`, `yieldAvailable`, `convertToAssets(balanceOf(owner))`, `totalAssets`; owner
+`0x40A9e821A48BA535B17679b95F4F7353d7F845ab`, 6-decimal USDC). These are live historical `eth_call`s, not
+derived from the events.
+
+| Mark | Block | `costBasis` | `yieldAvailable` | `convertToAssets(balanceOf)` | `totalAssets` | `fromYield` / `fromPrincipal` |
+|---|---|---|---|---|---|---|
+| before #1 | 62176768 | 1000.000000 | 0.000000 | 1000.000000 | 1000.000000 | — |
+| after #1 | 62176769 | 999.000000 | 0.000000 | 999.000000 | 999.000000 | 0 / 1.000000 |
+| after #2 | 62177295 | 998.000000 | 0.000000 | 998.000000 | 998.000000 | 0 / 1.000000 |
+| after #3 | 62177825 | 997.000000 | 0.000000 | 997.000000 | 997.000000 | 0 / 1.000000 |
+| after #4 | 62178355 | 996.000000 | 0.000000 | 996.000000 | 996.000000 | 0 / 1.000000 |
+| after #5 | 62179410 | 995.000000 | 0.000000 | 995.000000 | 995.000000 | 0 / 1.000000 |
+| after #6 | 62179936 | 994.000000 | 0.000000 | 994.000000 | 994.000000 | 0 / 1.000000 |
+| after #7 | 62180466 | 993.000000 | 0.000000 | 993.000000 | 993.000000 | 0 / 1.000000 |
+| after #8 | 62180994 | 992.000000 | 0.000000 | 992.000000 | 992.000000 | 0 / 1.000000 |
+| after #9 | 62181521 | 991.000000 | 0.000000 | 991.000000 | 991.000000 | 0 / 1.000000 |
+| after #10 | 62182049 | 990.000000 | 0.000000 | 990.000000 | 990.000000 | 0 / 1.000000 |
+
+There was **no yield** in this plan: every payout was `fromYield = 0`, `fromPrincipal = 1 USDC`, so cost basis
+and position value both fell by exactly 1 USDC per payout (1000 → 990). This is the expected
+`YIELD_THEN_PRINCIPAL` behaviour when the position has not earned yield — it does not show principal unchanged.
+
+**No `YIELD_ONLY` plan was created in Phase B.** The fresh vault has exactly one `PlanCreated`, mode 1
+(`YIELD_THEN_PRINCIPAL`). The `YIELD_ONLY` runs in `DEPLOYMENTS.md` belong to the older 2026-11-20 deployment,
+not this one, so there is no Phase B YIELD_ONLY principal-unchanged proof to show.
+
+## Ack, retry, pause, and self-heal evidence
+
+This is the complete Phase B record. There is **one genuine retry**, and it ended in a skip rather than a move.
+
+| What | Chain | Tx | Block | Time (unix) |
 |---|---|---|---|---|
-| Base Sepolia | PlanCreated | #1 | payee 0x33F693201E2fFEf0eD41f624Ec0502a0264a5368, 1 USDC / 120s, YIELD_ONLY, 3 left | [0x876a51b3…b62752](https://sepolia.basescan.org/tx/0x876a51b3782973f8919309096438adcc24bfde3fce5fd83b6654be7cddb62752) |
-| Base Sepolia | PlanCreated | #2 | payee 0x33F693201E2fFEf0eD41f624Ec0502a0264a5368, 1 USDC / 120s, YIELD_ONLY, 3 left | [0x240db0cf…629087](https://sepolia.basescan.org/tx/0x240db0cffdb5bba28c3a1f384a2dea177578ddfa54d4131f3c868d3ac8629087) |
-| Base Sepolia | PlanCreated | #3 | payee 0x33F693201E2fFEf0eD41f624Ec0502a0264a5368, 1 USDC / 120s, YIELD_ONLY, 3 left | [0xad123421…d323c3](https://sepolia.basescan.org/tx/0xad123421d4105b57aec1f0b78bb1b93a364eb806638ecb6602b4175fecd323c3) |
-| Base Sepolia | PlanCreated | #4 | payee 0x33F693201E2fFEf0eD41f624Ec0502a0264a5368, 1 USDC / 120s, YIELD_THEN_PRINCIPAL, 3 left | [0x99450f6d…3b3d3d](https://sepolia.basescan.org/tx/0x99450f6d0790ccf5e5749488d17ec4a5c9864564200ff485397f7890453b3d3d) |
-| Base Sepolia | PlanCreated | #5 | payee 0x33F693201E2fFEf0eD41f624Ec0502a0264a5368, 1 USDC / 120s, YIELD_THEN_PRINCIPAL, 3 left | [0x2d370988…7c025d](https://sepolia.basescan.org/tx/0x2d370988d95bd4eaf9c8f49a8b513e9729f04ad1c0b02cc849c1c85d987c025d) |
-| Base Sepolia | PlanCreated | #6 | payee 0x33F693201E2fFEf0eD41f624Ec0502a0264a5368, 1 USDC / 120s, YIELD_THEN_PRINCIPAL, 3 left | [0x06abd09a…903a49](https://sepolia.basescan.org/tx/0x06abd09a4c1de842e89e41d71d0b92d13d97dc1ed71744418abf40a673903a49) |
-| Base Sepolia | PlanExecuted | #4 | 1 USDC (yield 1 / principal 0), 2 left | [0xa9ca22fd…78a637](https://sepolia.basescan.org/tx/0xa9ca22fd293528b2329b23d4924aa0d5269909e45bce7b457b53befa8978a637) |
-| Base Sepolia | PlanExecuted | #5 | 1 USDC (yield 1 / principal 0), 2 left | [0x64f6928e…e1586a](https://sepolia.basescan.org/tx/0x64f6928ead16a533dfbe20627749f2b41b8654215c2bb3b6363a1ff6a2e1586a) |
-| Base Sepolia | PlanExecuted | #6 | 1 USDC (yield 1 / principal 0), 2 left | [0x706732a6…f6aa2e](https://sepolia.basescan.org/tx/0x706732a65b9bf12f43aed3cbedd36bfef6c663b40fad6d7477cf0eadeff6aa2e) |
-| Base Sepolia | PlanExecuted | #1 | 1 USDC (yield 1 / principal 0), 2 left | [0x78bd3aac…5939e9](https://sepolia.basescan.org/tx/0x78bd3aac4feeffa6822ee79b019bce79f211efcbc6f52168a16225587a5939e9) |
-| Base Sepolia | PlanExecuted | #2 | 1 USDC (yield 1 / principal 0), 2 left | [0x41033657…e116c9](https://sepolia.basescan.org/tx/0x4103365731ccdca839b2605f5b03e897bdaa33b24c77c4d2a9938d47cbe116c9) |
-| Base Sepolia | PlanExecuted | #3 | 1 USDC (yield 1 / principal 0), 2 left | [0x6038e786…dc1a6d](https://sepolia.basescan.org/tx/0x6038e786f02d3679fd1ef1858dd8c53f78e91cee7e3b98d09db4a38480dc1a6d) |
-| Base Sepolia | PlanExecuted | #4 | 1 USDC (yield 1 / principal 0), 1 left | [0xd3994e59…a846cf](https://sepolia.basescan.org/tx/0xd3994e594a7497218ccc31f19270b0b0076eab438154d0ec1968acd1b0a846cf) |
-| Base Sepolia | PlanExecuted | #5 | 1 USDC (yield 1 / principal 0), 1 left | [0x98458779…64c6fa](https://sepolia.basescan.org/tx/0x984587797cdc24d217939adb7997e542a02c49983cb986ea41ee41e53c64c6fa) |
-| Base Sepolia | PlanExecuted | #6 | 1 USDC (yield 1 / principal 0), 1 left | [0xde9c3ccb…c62f67](https://sepolia.basescan.org/tx/0xde9c3ccb0f1a264c04c62320833976ee0b89e9aceb80d59f884473b339c62f67) |
-| Base Sepolia | PlanExecuted | #1 | 1 USDC (yield 1 / principal 0), 1 left | [0x5eb49b9d…95f3a0](https://sepolia.basescan.org/tx/0x5eb49b9d50f871dd08fe7e7a397a4628984cca9a83549742e411cdbe8795f3a0) |
-| Base Sepolia | PlanExecuted | #2 | 1 USDC (yield 1 / principal 0), 1 left | [0x2ad84d47…9bed06](https://sepolia.basescan.org/tx/0x2ad84d479d512e710022c688e8d41d957aa4ff8475231e41f5e1640f099bed06) |
-| Base Sepolia | PlanExecuted | #3 | 1 USDC (yield 1 / principal 0), 1 left | [0x354d8744…dddfcb](https://sepolia.basescan.org/tx/0x354d8744b2c575c41b06faec0c61a6bcbe96aaadc833358e17bdfa948edddfcb) |
-| Base Sepolia | PlanExecuted | #4 | 1 USDC (yield 1 / principal 0), 0 left | [0xcb661a43…73200a](https://sepolia.basescan.org/tx/0xcb661a438d92443b9cd132eda5d29835e6b09789089722eadb43ec074173200a) |
-| Base Sepolia | PlanExecuted | #5 | 1 USDC (yield 1 / principal 0), 0 left | [0x42cc7302…8d0e1f](https://sepolia.basescan.org/tx/0x42cc730280bd4cd8cc42cde57ffa47f29582849c596ca2cba94d6551de8d0e1f) |
-| Base Sepolia | PlanExecuted | #6 | 1 USDC (yield 1 / principal 0), 0 left | [0x27ac3d76…6ca9d1](https://sepolia.basescan.org/tx/0x27ac3d7692260002907288424ea8db6a37636e3a772436ee9c68b8bfb06ca9d1) |
-| Base Sepolia | PlanExecuted | #1 | 1 USDC (yield 1 / principal 0), 0 left | [0x75cd09f1…60836b](https://sepolia.basescan.org/tx/0x75cd09f11dce016428b818a6a43bdef1ee7833d9657cbf8571e83f879760836b) |
-| Base Sepolia | PlanExecuted | #2 | 1 USDC (yield 1 / principal 0), 0 left | [0x50c65278…84dcd6](https://sepolia.basescan.org/tx/0x50c6527860e06de005dc719d4bd3ea6fe5c83e113427f65f3ef97260b684dcd6) |
-| Base Sepolia | PlanExecuted | #3 | 1 USDC (yield 1 / principal 0), 0 left | [0x7e680ff4…894219](https://sepolia.basescan.org/tx/0x7e680ff4a9883828912e21298ee4a1b2061f3e9d8f808bb4ceb3736298894219) |
+| AI `PAUSE` verdict 17 | Unichain | `0xc9b2600c7671ca20df0b67406f4248f8e73217814ade9ea1018aa8d159d9a919` | 68519694 | 1795372122 |
+| Vault pauses on verdict 17 | Unichain | `0x05712d5f3f0d5d937aa02d1b5a8ef638d8386bcb605cd4fe8937322bf3801d78` | 68519696 | 1795372124 |
+| Verdict 19 `ACT` posted (first rebalance callback sent while paused) | Unichain | `0x5a0d374980be58afc99278c7d590bd1289077a66629e0f3dd110b963fbc8ac70` | 68519766 | 1795372194 |
+| Admin `unpause()` | Unichain | `0xeee67d5cdd11d6224865a0db4ecbef72fd0af45f5c23fdf74b60dcc282a486bc` | 68519907 | 1795372335 |
+| `ActionRetried(1301, kind=2, id=19, attempt=2)` | Lasna | `0x81d2647d6b82aed90efadf872f48b7a96b2142c0f833242cb933feb6bf29c703` | 8994901 | 1795372649 |
+| Retry accepted, `RebalanceSkipped(19, 0, 0)` | Unichain | `0xd0f8d815d5080c0556d97a6e90597c99ef51fdd8ad51b10c9cad3a2d4825d0dd` | 68520224 | 1795372652 |
 
-## Live subscriptions (Reactive RPC `rnk_getFilters`)
-Filters version 9358; 27 active filters belong to the RSC: {"1301":13,"84532":14}. Re-run after calling `addPool` on a vault to show the count grow with no owner call.
+**Cause.** Verdict 17 paused the Unichain vault 70 s before verdict 19's first `rebalance` callback. The vault's
+`rebalance()` begins with `require(!paused, "paused")`, so the first callback reverted; Lasna does not post
+callback results back, so that failed tx hash is not retrievable. After the admin unpause, the RSC retried at
+attempt 2. This time the call succeeded, but `_planMove` returned `plannedMove = 0, annualGain = 0`, so the vault
+emitted `RebalanceSkipped` instead of moving funds. No `ActionStuck` occurred and the action was cleared.
 
-Timestamps have 1-second granularity (Reactive Omni blocks are about 1s with instant finality), so latencies are accurate to ±1s.
+No `BreakerTripped`, `BreakerCleared`, `EmergencyExit`, `ExitObserved`, `OmniPause`, or `OmniHeal` event exists in
+the full Phase B Lasna range (`8,979,790..8,998,573`), so the omnichain breaker + self-heal demo was **not run on
+this deployment**. The only other pause was a stale-data pause, and it was not healed:
+
+| What | Chain | Tx | Block | Time |
+|---|---|---|---|---|
+| `StaleDetected(84532, 2616)` + `SelfFunded` | Lasna | `0x57c4c8787ee505fa6b5bb4e95dd56b03a2d980f100b8e568d8c1362c2ededfd6` | 8982501 | 1795359442 |
+| Base vault `PausedByReactive(STALE_DATA)` | Base | `0x6ed04bc267a73da9c83435f3755ff0a01309d9ef20e2cd6d866e1c83e136206f` | 62187880 | 1795359444 |
+
+The Base vault is still paused at capture (see final state), and the feed is off, so no new `RateObserved`
+arrives to trigger the RSC's automatic `StaleHealed` unpause.
+
+## Final state at capture
+
+| Item | Value |
+|---|---|
+| `feedOn` | false |
+| `cronOn` | false |
+| `watchdog` | false |
+| `activePlans` | 0 |
+| `pendingActions` | 0 |
+| `estimatedBurnPerHour` | 0 gas (cron and feed both off) |
+| `ticks` | 21 |
+| RSC reserves (system credit) | 1.2367516 lREACT |
+| RSC debt | 0 |
+| lREACT balance of the RSC address | 0 |
+| Base vault | paused, reason `STALE_DATA`, 990 USDC |
+| Unichain vault | not paused, 1000 USDC |
+| Lasna `stalePaused` | Base true, Unichain false |
+| `rebalances` counter | Base 5, Unichain 13 |
+| Deployer lREACT (Lasna) | 6.047264759995901037 |
+| Deployer Base ETH | 0.033840418431903699 |
+| Deployer Unichain ETH | 0.088981267935069914 |
+
+**What "1.24 lREACT left in RSC reserves and no balance in the RSC contract" means.** `reserves(RSC)` is an
+accounting credit inside Reactive's system contract (`0x8888…8888`), not an ERC20 balance at the RSC address.
+The RSC address holds 0 lREACT; the system contract holds the pooled lREACT and lets the RSC spend its 1.2367516
+credit on reactions and callbacks. It is usable prepaid gas, not a token the RSC can transfer.
+
+## Not run / not captured
+
+- **Omnichain breaker + self-heal** (`BreakerTripped` → `EmergencyExit` → cross-chain pause → `BreakerCleared` →
+  unpause): not run on the Phase B deployment; no such events exist.
+- **`ActionStuck`**: none occurred. The one retry (verdict 19) succeeded as a skip.
+- **`YIELD_ONLY` plan**: not created in Phase B.
+- **Reactive MCP** `get_rc_health` / `decode_callback`: no output was captured. `ops.js` only keeps a 1200-char
+  in-memory snippet and it was not run for this report; the `HEALTHY` line in `DEPLOYMENTS.md` is from the older
+  2026-11-20 deployment.
+
+## Spend
+
+About **6.7 lREACT** of the **12.238 lREACT** budget was consumed (deploy gas, 4 lREACT RSC funding, the 1.5
+lREACT reserve seed, and owner/loop transactions). **1.2367516 lREACT** remains as system-contract reserve
+credit for the RSC; the RSC address itself holds 0 lREACT.

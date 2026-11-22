@@ -5,7 +5,9 @@
 // own RPC. Writes PROOF.md.
 //
 // How the trace works:
-//   origin tx      = LogRecord.txHash, which RoninReactive copies into its events (`originTx`)
+//   origin tx      = the target pool's RateUpdated tx, recovered from the last RateObserved for that pool
+//                    before the verdict (`RateObserved.originTx`). VerdictSeen.originTx is the verdict-post
+//                    tx, not the rate update, so it is not used.
 //   reactive tx    = the transaction that emitted those events on Lasna
 //   destination tx = the vault transaction that answered the callback. Reactive Lasna does not post callback
 //                    results back (`getCallbacks` is empty on this network), so the destination is resolved
@@ -274,6 +276,20 @@ for (const l of logs) {
   byTx.get(l.transactionHash).push(l);
 }
 
+// The true origin of an ACT loop is the rate update that made the gap visible. There can be several
+// RateObserved events for a pool in one window, so take the last one at or before the verdict tx.
+const rateObserved = logs.filter((l) => l.eventName === "RateObserved");
+const latestRate = (chainId, pool, block) =>
+  rateObserved
+    .filter((l) => Number(l.args.chainId) === chainId && l.args.pool.toLowerCase() === pool.toLowerCase() && l.blockNumber <= block)
+    .sort((a, b) => Number(a.blockNumber - b.blockNumber))
+    .pop();
+const requestSecs = new Map();
+for (const l of logs) {
+  if (l.eventName !== "LoopClosed") continue;
+  requestSecs.set(`${Number(l.args.chainId)}:${Number(l.args.verdictId)}`, Number(l.args.requestToRebalanceSecs));
+}
+
 const rows = [];
 for (const [txHash, ls] of byTx) {
   const names = ls.map((l) => l.eventName);
@@ -286,9 +302,12 @@ for (const [txHash, ls] of byTx) {
   }
   if (!interesting && callbacks.length === 0) continue;
 
-  const withOrigin = ls.find((l) => l.args.originTx !== undefined);
   const chainId = Number(ls[0].args.chainId ?? ls[0].args.pausedChainId ?? 0);
-  const originTx = withOrigin ? hex32(withOrigin.args.originTx) : null;
+  const rr = ls.find((l) => l.eventName === "RebalanceRequested");
+  const pr = ls.find((l) => l.eventName === "PauseRequested");
+  const bt = ls.find((l) => l.eventName === "BreakerTripped");
+  const rate = rr ? latestRate(chainId, rr.args.toPool, ls[0].blockNumber) : null;
+  const originTx = rate ? hex32(rate.args.originTx) : null;
   const reactiveBlock = await lasna.getBlock({ blockNumber: ls[0].blockNumber });
   const reactiveTs = Number(reactiveBlock.timestamp);
 
@@ -299,9 +318,6 @@ for (const [txHash, ls] of byTx) {
     dests.push({ chainId: cid, hash: h, err: c.err && c.err !== "0x" ? c.err : null, t: await tsOfTx(origins[cid]?.client, h) });
   }
   if (dests.length === 0) {
-    const rr = ls.find((l) => l.eventName === "RebalanceRequested");
-    const pr = ls.find((l) => l.eventName === "PauseRequested");
-    const bt = ls.find((l) => l.eventName === "BreakerTripped");
     const match = rr
       ? verdictDest(chainId, Number(rr.args.verdictId))
       : pr
@@ -313,6 +329,7 @@ for (const [txHash, ls] of byTx) {
   }
 
   const verdict = ls.find((l) => l.eventName === "VerdictSeen");
+  const verdictId = verdict ? Number(verdict.args.verdictId) : rr ? Number(rr.args.verdictId) : null;
   const tOrigin = originTx ? await tsOfTx(origins[chainId]?.client, originTx) : null;
   const lastDest = dests.map((d) => d.t).filter(Boolean).sort().pop();
   rows.push({
@@ -326,6 +343,7 @@ for (const [txHash, ls] of byTx) {
     reactiveTs,
     latency: tOrigin && lastDest ? Math.max(0, lastDest - tOrigin) : null,
     reactiveLatency: tOrigin ? Math.max(0, reactiveTs - tOrigin) : null,
+    requestLatency: verdictId != null ? requestSecs.get(`${chainId}:${verdictId}`) ?? null : null,
   });
 }
 
@@ -360,16 +378,20 @@ for (const l of planRows) {
     .getBlock({ blockNumber: sched.blockNumber })
     .then((b) => Number(b.timestamp))
     .catch(() => null);
+  const due = Number(l.args.nextDue) - Number(created.args.period);
   planLoops.push({
-    what: "PlanCreated → PlanExecuted",
+    what: `Plan #${l.args.id}: PlanCreated → PlanExecuted`,
     chainId: l.chainId,
     originTx: created.transactionHash,
-    txHash: sched.transactionHash,      dests: [{ chainId: l.chainId, hash: l.transactionHash, err: null, t: l.t, via: "PlanExecuted" }],
+    txHash: sched.transactionHash,
+    dests: [{ chainId: l.chainId, hash: l.transactionHash, err: null, t: l.t, via: "PlanExecuted" }],
     verdictAction: null,
     skipped: false,
     reactiveTs: schedTs,
     latency: created.t && l.t ? Math.max(0, l.t - created.t) : null,
     reactiveLatency: created.t && schedTs ? Math.max(0, schedTs - created.t) : null,
+    // The last column for a plan is due → executed, not request → rebalanced.
+    requestLatency: l.t ? Math.max(0, l.t - due) : null,
   });
 }
 planLoops.sort((a, b) => Number(a.dests[0].t ?? 0) - Number(b.dests[0].t ?? 0));
@@ -405,15 +427,15 @@ md.push(`Reactive contract (RSC): \`${RSC}\` on Reactive Lasna (5318007).`);
 md.push(``);
 md.push(`Each row is one **complete loop**: the **origin** transaction that emitted the event, the **Reactive** transaction on Lasna that handled it, and the **destination** transaction the callback produced, with the end-to-end latency. Lasna does not post callback results back (\`getCallbacks\` is empty on this network), so the destination tx is the vault transaction that answered the callback, matched by verdict id. A standing-order payout counts as a loop too: the origin tx is the vault's \`PlanCreated\`, the Reactive tx is \`PlanScheduled\`, and the destination is the vault's \`PlanExecuted\`.`);
 md.push(``);
-md.push(`| Reaction | Origin tx | Reactive tx (Lasna) | Destination tx | Origin→Reactive | Origin→Destination |`);
-md.push(`|---|---|---|---|---|---|`);
+md.push(`| Reaction | Origin tx | Reactive tx (Lasna) | Destination tx | Origin→Reactive | Origin→Destination | Request→Rebalanced / Due→Executed |`);
+md.push(`|---|---|---|---|---|---|---|`);
 for (const r of complete) {
   const dest = r.dests.map((d) => `${link(d.chainId, d.hash)}${d.via ? ` (${d.via})` : ""}`).join("<br>");
   md.push(
-    `| ${r.what} | ${link(r.chainId, r.originTx)} | \`${r.txHash}\` | ${dest} | ${r.reactiveLatency != null ? r.reactiveLatency + "s" : "n/a"} | ${r.latency != null ? r.latency + "s" : "n/a"} |`
+    `| ${r.what} | ${link(r.chainId, r.originTx)} | \`${r.txHash}\` | ${dest} | ${r.reactiveLatency != null ? r.reactiveLatency + "s" : "n/a"} | ${r.latency != null ? r.latency + "s" : "n/a"} | ${r.requestLatency != null ? r.requestLatency + "s" : "n/a"} |`
   );
 }
-if (complete.length === 0) md.push(`| — | — | — | no complete loops in this range | — | — |`);
+if (complete.length === 0) md.push(`| — | — | — | no complete loops in this range | — | — | — |`);
 md.push(``);
 md.push(`**${complete.length}** complete loops, of which **${planLoops.length}** are standing-order payouts and **${complete.length - planLoops.length}** are AI verdict loops.`);
 md.push(``);
@@ -434,7 +456,7 @@ if (vaults.length === 0) {
       `| ${origins[l.chainId]?.name ?? l.chainId} | ${l.eventName} | #${l.args.id} | ${planDetail(l)} | ${link(l.chainId, l.transactionHash)} |`
     );
   }
-  if (planRows.length === 0) md.push(`| — | — | — | no plan events in the last ${PLAN_BLOCKS} blocks | — |`);
+  if (planRows.length === 0) md.push(`| — | — | — | no plan events in this range | — |`);
 }
 if (SHOW_ALL && (refused.length || undelivered.length)) {
   md.push(``);
@@ -450,7 +472,7 @@ md.push(``);
 md.push(`## Live subscriptions (Reactive RPC \`rnk_getFilters\`)`);
 md.push(audit.error ? `Could not read: ${audit.error}` : `Filters version ${audit.version}; ${audit.total} active filters belong to the RSC: ${JSON.stringify(audit.byChain)}. Re-run after calling \`addPool\` on a vault to show the count grow with no owner call.`);
 md.push(``);
-md.push(`Timestamps have 1-second granularity (Reactive Omni blocks are about 1s with instant finality), so latencies are accurate to ±1s.`);
+md.push(`For AI loops the last column is \`LoopClosed.requestToRebalanceSecs\` (DecisionRequested → Rebalanced, AI inference included); for a plan row it is the scheduled due time (\`nextDue − period\`) → \`PlanExecuted\`. Timestamps have 1-second granularity (Reactive Omni blocks are about 1s with instant finality), so latencies are accurate to ±1s.`);
 
 writeFileSync(new URL("./PROOF.md", import.meta.url), md.join("\n") + "\n");
 console.log(md.join("\n"));

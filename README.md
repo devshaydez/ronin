@@ -276,6 +276,22 @@ or ignored requests into a single count line. Standing-order payouts are complet
 `PlanScheduled` → `PlanExecuted`). Use `--from-block 8684076` to cover the whole deployment, and `--all` for an
 appendix listing the reactions that never reached a destination.
 
+### Measured Phase B latency (2026-11-22)
+
+Fresh deployment on Reactive Lasna + Base Sepolia + Unichain Sepolia, mock lending pools on Unichain and the
+Aave-mode vault on Base. Ten successful AI-gated rebalances and ten standing-order payouts were measured from
+their on-chain events (origin tx → Reactive tx → destination tx). Full per-loop rows are in
+[`ai-service/PROOF.md`](ai-service/PROOF.md).
+
+| Loop type | n | Origin → Reactive | Origin → Destination | Request → Rebalanced |
+|---|---|---|---|---|
+| AI-gated rebalance | 10 | median **19 s**, worst **23 s** | median **22 s**, worst **26 s** | median **20 s**, worst **24 s** (AI included) |
+| Standing-order payout | 10 | **<1 s** | median **755 s**, worst **1230 s** | due → executed: median **50 s**, worst **102 s** |
+
+For payouts, origin → destination grows with the 120 s cadence (it is time since `PlanCreated`), so the execution
+lateness is the `due → executed` column. The AI column is `LoopClosed.requestToRebalanceSecs`, i.e. from
+`DecisionRequested` to `Rebalanced`, so it includes model inference and both callbacks.
+
 Economy rules that shaped the design: execution stops while debt > 0; reverted `react()` and failed callbacks are
 still charged; callbacks under 100,000 gas are ignored; a Reactive transaction is capped at 900,000 gas; Omni blocks
 are about 1s with instant finality (no reorgs, so the latency numbers are real).

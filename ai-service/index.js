@@ -185,6 +185,7 @@ for (const c of chains) {
   c.pub.watchEvent({
     address: c.requester,
     event: requestEvent,
+    poll: true,
     pollingInterval: 2_000,
     onLogs: (logs) => {
       const seenAt = Date.now();
