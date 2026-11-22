@@ -26,7 +26,7 @@ Repository layout:
 | Path | What |
 |---|---|
 | `src/` | `RoninVault` (ERC-4626 + plans), `RoninReactive` (the brain), `DecisionRequester`, `AIVerdictRegistry`, Aave adapter, mocks |
-| `test/` | 87 Foundry tests: vault accounting/plans, reactive scheduling/acks/backoff, Aave adapter |
+| `test/` | 103 Foundry tests: vault accounting/plans, reactive scheduling/acks/backoff, Aave adapter |
 | `script/` | `1_DeployReactive`, `2_DeployChain`, `3_WireReactive` |
 | `ai-service/` | `index.js` (NEAR AI answerer), `ops.js` (autonomous top-ups), `proof.js` (writes `PROOF.md`) |
 | `DEPLOYMENTS.md` | every address and transaction of the live testnet deployment |
@@ -41,7 +41,7 @@ Repository layout:
 | 3 | Consumes `VerdictPosted` and calls the vault; the vault re-checks the verdict on-chain | event-driven callbacks, two-hop loop |
 | 4 | **Omnichain breaker**: an exit on any chain pauses deposits on all others; heals itself when the trigger clears | multi-chain subscriptions, one brain |
 | 5 | **Omnichain yield signal** pushed to every vault (UI can steer new deposits) | multi-chain callbacks |
-| 6 | **CRON watchdog**: no rate data for 15 min pauses the vault; data returning unpauses it | `Cron100` subscription |
+| 6 | **CRON watchdog** (opt-in): no rate data for 15 min pauses the vault; data returning unpauses it | `Cron100` subscription |
 | 7 | **Dynamic subscriptions**: `vault.addPool()` emits `PoolAdded`; the Reactive contract subscribes to the new pool by itself | subscribe from inside `react()` |
 | 8 | **Feedback loop**: watches the vault's own `Rebalanced` and measures request-to-rebalance time on-chain (`LoopClosed`) | subscribing to your own outputs |
 | 9 | **Self-funding**: on every CRON tick the Reactive contract tops its own reserves up (`depositTo`) before they run dry, because execution stops while debt > 0 | Reactive economy (reserves, debt) |
@@ -138,7 +138,7 @@ the Lasna system contract locally, which uses Cancun opcodes; via_ir because the
 
 ```bash
 forge build
-forge test -vv            # 92 tests, includes the idle and max-plan cron tick gas checks
+forge test -vv            # 103 tests, includes the idle and max-plan cron tick gas checks
 cd ai-service && npm install && cd ..
 ```
 

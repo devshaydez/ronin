@@ -11,10 +11,10 @@
       "rev": "cab19933c33c2ad1d4c7a84864a3601dddfd16f3"
     }
   },
-  "lib/reactive-lib": {
+  "lib/reactive-lib-omni": {
     "tag": {
-      "name": "v0.2.0",
-      "rev": "d664678a7d86204c9391af4cedfd5ae0b0b904e4"
+      "name": "v0.1.0",
+      "rev": "3ade0dcf1d27e67e5783ef807e73a1b9e0c0cce8"
     }
   }
 }
