@@ -65,8 +65,10 @@ contract RoninVault is ERC4626, AbstractCallback {
     uint256 public planCount;
     mapping(uint256 => Plan) internal _plans;
 
-    /// @notice Assets each account put in and has not withdrawn (proportional on withdrawal/transfer).
-    ///         `convertToAssets(balanceOf(owner)) - costBasis[owner]` is the account's unrealised yield.
+    /// @notice Assets each account put in and has not withdrawn. Withdrawals and plan payouts reduce it only
+    ///         by their principal portion (yield is consumed first); plain share transfers move it
+    ///         proportionally. `convertToAssets(balanceOf(owner)) - costBasis[owner]` is the account's
+    ///         unrealised yield.
     mapping(address => uint256) public costBasis;
 
     // Omnichain yield signal pushed by the Reactive contract (informational: lets a UI route new
@@ -163,18 +165,20 @@ contract RoninVault is ERC4626, AbstractCallback {
         internal
         override
     {
-        uint256 sharesBefore = balanceOf(owner_);
+        // Measure yield BEFORE the withdrawal: a payout consumes yield first, and only the part of the
+        // assets above it is principal. Cost basis tracks principal, so that is the only part that moves.
+        uint256 yieldBefore = yieldAvailable(owner_);
         uint256 idle = IERC20(asset()).balanceOf(address(this));
         if (idle < assets) _pullFromPools(assets - idle);
         super._withdraw(caller, receiver, owner_, assets, shares);
 
-        // Withdrawals (including plan payouts) consume cost basis in proportion to the shares burned.
-        // Round the reduction UP so the remaining basis can never exceed the remaining principal.
+        uint256 principalPart = assets > yieldBefore ? assets - yieldBefore : 0;
         uint256 basis = costBasis[owner_];
-        if (basis > 0 && sharesBefore > 0) {
-            uint256 cut = Math.mulDiv(basis, shares, sharesBefore, Math.Rounding.Ceil);
-            costBasis[owner_] = basis > cut ? basis - cut : 0;
-        }
+        uint256 remaining = basis > principalPart ? basis - principalPart : 0;
+        // Share-value rounding can leave the position one wei below the computed basis; never report a
+        // cost basis above what the remaining shares are worth.
+        uint256 valueAfter = convertToAssets(balanceOf(owner_));
+        costBasis[owner_] = remaining > valueAfter ? valueAfter : remaining;
     }
 
     /// @dev Plain share transfers move cost basis proportionally, so yield cannot be created or destroyed
@@ -185,8 +189,14 @@ contract RoninVault is ERC4626, AbstractCallback {
             uint256 basis = costBasis[from];
             if (balBefore > 0 && basis > 0) {
                 uint256 moved = Math.mulDiv(basis, value, balBefore);
-                costBasis[from] = basis - moved;
-                costBasis[to] += moved;
+                // Proportional movement, with a wei-level guard so rounding can never report a basis above
+                // what the shares are worth on either side.
+                uint256 remaining = basis - moved;
+                uint256 fromValue = convertToAssets(balBefore - value);
+                costBasis[from] = remaining > fromValue ? fromValue : remaining;
+                uint256 toBasis = costBasis[to] + moved;
+                uint256 toValue = convertToAssets(balanceOf(to) + value);
+                costBasis[to] = toBasis > toValue ? toValue : toBasis;
             }
         }
         super._update(from, to, value);

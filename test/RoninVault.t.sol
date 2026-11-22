@@ -466,9 +466,44 @@ contract RoninVaultTest is Test {
         _pay(id);
 
         assertEq(usdc.balanceOf(bob), 10e6);
+        // Principal is untouched: the whole payout came out of yield.
+        assertEq(vault.costBasis(alice), 1_000e6);
+        assertApproxEqAbs(vault.yieldAvailable(alice), 40e6, 2);
         assertGe(vault.convertToAssets(vault.balanceOf(alice)), vault.costBasis(alice));
-        // Most of the 50 USDC of yield is still there; only the burned shares' share of basis moved.
-        assertGe(vault.yieldAvailable(alice), 49e6);
+    }
+
+    function test_sixYieldOnlyPayoutsLeavePrincipalUntouched() public {
+        _accrue(100e6); // worth 1100, basis 1000 -> 100 available
+        uint256 id = _create(RoninVault.PayoutMode.YIELD_ONLY, 10e6, 120, 6);
+        uint256 basis = vault.costBasis(alice);
+        uint256 y0 = vault.yieldAvailable(alice);
+        uint256 paid;
+
+        for (uint256 i = 0; i < 6; i++) {
+            uint256 before = vault.yieldAvailable(alice);
+            vm.warp(vault.plans(id).nextDue);
+            _pay(id);
+            paid += 10e6;
+            assertEq(vault.costBasis(alice), basis, "principal moved");
+            // Each payout removes exactly its amount from the yield pot.
+            assertApproxEqAbs(before - vault.yieldAvailable(alice), 10e6, 2);
+        }
+
+        assertEq(vault.costBasis(alice), basis);
+        assertEq(usdc.balanceOf(bob), paid);
+        assertApproxEqAbs(vault.yieldAvailable(alice), y0 - paid, 3);
+    }
+
+    function test_withdrawingPartOfTheYieldLeavesBasisUnchanged() public {
+        _accrue(100e6);
+        uint256 basis = vault.costBasis(alice);
+        uint256 y0 = vault.yieldAvailable(alice);
+
+        vm.prank(alice);
+        vault.withdraw(30e6, alice, alice);
+
+        assertEq(vault.costBasis(alice), basis);
+        assertApproxEqAbs(vault.yieldAvailable(alice), y0 - 30e6, 2);
     }
 
     function test_yieldOnlyExpiresAfterMaxSkips() public {
@@ -497,11 +532,15 @@ contract RoninVaultTest is Test {
         vm.warp(due);
 
         uint256 expectedYield = vault.yieldAvailable(alice); // ERC-4626 virtual offset rounds it down by 1 wei
+        uint256 basisBefore = vault.costBasis(alice);
         vm.expectEmit(true, true, false, true, address(vault));
         emit PlanExecuted(id, bob, 10e6, expectedYield, 10e6 - expectedYield, due + 120, 2);
         _pay(id);
 
         assertEq(usdc.balanceOf(bob), 10e6);
+        // Yield is consumed first, so only the principal component reduces cost basis.
+        assertEq(vault.costBasis(alice), basisBefore - (10e6 - expectedYield));
+        assertLt(vault.costBasis(alice), basisBefore);
         assertGe(vault.convertToAssets(vault.balanceOf(alice)), vault.costBasis(alice));
     }
 
@@ -557,6 +596,53 @@ contract RoninVaultTest is Test {
             vm.prank(alice);
             vault.withdraw(wd, alice, alice);
         }
+        assertGe(vault.convertToAssets(vault.balanceOf(alice)), vault.costBasis(alice));
+        assertGe(vault.convertToAssets(vault.balanceOf(bob)), vault.costBasis(bob));
+    }
+
+    /// After any sequence of deposits, accruals, yield-only payouts, withdrawals and transfers, an account's
+    /// position is never worth less than the principal it still has on the books.
+    function testFuzz_valueAlwaysCoversCostBasis(
+        uint96 extraDeposit,
+        uint96 accrue1,
+        uint96 payoutAmount,
+        uint96 withdrawAssets,
+        uint96 transferAmount,
+        uint96 accrue2
+    ) public {
+        uint256 dep = bound(uint256(extraDeposit), 0, 500e6);
+        if (dep > 0) {
+            usdc.mint(alice, dep);
+            vm.startPrank(alice);
+            usdc.approve(address(vault), type(uint256).max);
+            vault.deposit(dep, alice);
+            vm.stopPrank();
+        }
+
+        _accrue(bound(uint256(accrue1), 0, 200e6));
+
+        uint256 id = _create(
+            RoninVault.PayoutMode.YIELD_ONLY, uint128(bound(uint256(payoutAmount), 1, 50e6)), 120, 3
+        );
+        vm.warp(vault.plans(id).nextDue);
+        _pay(id);
+
+        uint256 wd = bound(uint256(withdrawAssets), 0, vault.maxWithdraw(alice));
+        if (wd > 0) {
+            vm.prank(alice);
+            vault.withdraw(wd, alice, alice);
+        }
+
+        uint256 xfer = bound(uint256(transferAmount), 0, vault.balanceOf(alice));
+        if (xfer > 0) {
+            vm.prank(alice);
+            vault.transfer(bob, xfer);
+        }
+
+        _accrue(bound(uint256(accrue2), 0, 100e6));
+        vm.warp(vault.plans(id).nextDue);
+        _pay(id);
+
         assertGe(vault.convertToAssets(vault.balanceOf(alice)), vault.costBasis(alice));
         assertGe(vault.convertToAssets(vault.balanceOf(bob)), vault.costBasis(bob));
     }
