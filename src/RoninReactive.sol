@@ -116,6 +116,14 @@ contract RoninReactive is AbstractReactive {
         uint256 planId;
     }
 
+    /// @notice One Aave `ReserveDataUpdated` subscription, kept so the owner can switch the feed off and back on.
+    struct AaveFeed {
+        uint256 chainId;
+        address pool;
+        address reserve;
+        bool subscribed;
+    }
+
     struct PoolState {
         uint256 rateBps;
         uint256 emaBps; // exponential moving average, alpha = 1/8
@@ -179,12 +187,23 @@ contract RoninReactive is AbstractReactive {
     /// @notice Cron100 fires about every 100 blocks (~2 minutes on Lasna).
     uint16 public constant CRON_TICKS_PER_HOUR = 30;
     uint256 public constant MAX_ATTEMPTS = 3;
+    /// @dev Measured on the live Base Aave feed: ~0.032 lREACT per reaction at ~100 gwei (~320k gas), and
+    ///      ~65 reactions/hour (~2.1 lREACT/h idle, see DEPLOYMENTS.md). Used by estimatedBurnPerHour().
+    uint256 public constant FEED_EVENT_GAS = 320_000;
+    uint256 public constant FEED_EVENTS_PER_HOUR = 65;
+    uint256 public constant FEED_GAS_PER_HOUR = FEED_EVENT_GAS * FEED_EVENTS_PER_HOUR;
     PlanRef[] internal planRefs;
     mapping(bytes32 => PlanState) internal planState;
     mapping(bytes32 => bool) internal planSeen;
     mapping(bytes32 => RebalanceAction) internal rebalanceAction;
     mapping(uint256 => bytes32[]) internal pendingRebalances; // chainId => action keys
     uint256 public planCursor;
+    /// @notice True while the Aave ReserveDataUpdated subscriptions are active. configureAave() turns it on.
+    bool public feedOn;
+    /// @notice Refuse an ACT verdict below this confidence (the vault enforces the same floor on-chain).
+    uint16 public minConfidenceBps = 7000;
+    AaveFeed[] internal aaveFeeds;
+    mapping(bytes32 => uint256) internal aaveFeedIndex; // feed key => index + 1
     /// @notice Seconds without an ack before a callback is re-sent (default ~3 CRON ticks).
     uint256 public retryAfter = 360;
     /// @notice Rebalances are never retried after the verdict is this old (matches the vault default).
@@ -229,6 +248,9 @@ contract RoninReactive is AbstractReactive {
     event ActionRetried(uint256 indexed chainId, uint8 kind, uint256 indexed id, uint8 attempt, uint256 originTx);
     event ActionStuck(uint256 indexed chainId, uint8 kind, uint256 indexed id, uint256 originTx);
     event PlanScheduled(uint256 indexed chainId, uint256 indexed planId, uint64 nextDue, uint16 remaining);
+    event FeedEnabled(uint256 feeds);
+    event FeedDisabled(uint256 feeds);
+    event VerdictBelowThreshold(uint256 indexed chainId, uint256 indexed verdictId, uint16 confidenceBps, uint16 minConfidenceBps);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "only owner");
@@ -303,8 +325,47 @@ contract RoninReactive is AbstractReactive {
             isWatched[chainId][adapter] = true;
             poolList[chainId].push(adapter); // tracked for ranking; its rates come from Aave, not from RateUpdated
         }
-        SYSTEM.subscribe(chainId, aavePool, AAVE_RESERVE_TOPIC, uint256(uint160(reserve)), REACTIVE_IGNORE, REACTIVE_IGNORE);
+        bytes32 key = _aaveKey(chainId, aavePool, reserve);
+        if (aaveFeedIndex[key] == 0) {
+            aaveFeeds.push(AaveFeed(chainId, aavePool, reserve, false));
+            aaveFeedIndex[key] = aaveFeeds.length; // 1-based so 0 means "unknown"
+            feedOn = true; // the first feed turns the switch on
+        }
+        AaveFeed storage f = aaveFeeds[aaveFeedIndex[key] - 1];
+        if (feedOn && !f.subscribed) _subscribeFeed(f);
         emit AaveFeedConfigured(chainId, aavePool, reserve, adapter);
+    }
+
+    /// @notice Owner knob: stop paying for the Aave ReserveDataUpdated feed without redeploying.
+    ///         With CRON off too, estimatedBurnPerHour() returns 0 and the RSC costs nothing.
+    function disableFeed() external onlyOwner {
+        require(feedOn, "feed already off");
+        feedOn = false;
+        for (uint256 i = 0; i < aaveFeeds.length; i++) {
+            if (aaveFeeds[i].subscribed) _unsubscribeFeed(aaveFeeds[i]);
+        }
+        emit FeedDisabled(aaveFeeds.length);
+    }
+
+    /// @notice Re-subscribe every configured Aave feed after disableFeed().
+    function enableFeed() external onlyOwner {
+        require(!feedOn, "feed already on");
+        require(aaveFeeds.length > 0, "no feed configured");
+        feedOn = true;
+        for (uint256 i = 0; i < aaveFeeds.length; i++) {
+            _subscribeFeed(aaveFeeds[i]);
+        }
+        emit FeedEnabled(aaveFeeds.length);
+    }
+
+    function _subscribeFeed(AaveFeed storage f) internal {
+        SYSTEM.subscribe(f.chainId, f.pool, AAVE_RESERVE_TOPIC, uint256(uint160(f.reserve)), REACTIVE_IGNORE, REACTIVE_IGNORE);
+        f.subscribed = true;
+    }
+
+    function _unsubscribeFeed(AaveFeed storage f) internal {
+        SYSTEM.unsubscribe(f.chainId, f.pool, AAVE_RESERVE_TOPIC, uint256(uint160(f.reserve)), REACTIVE_IGNORE, REACTIVE_IGNORE);
+        f.subscribed = false;
     }
 
     function _aaveKey(uint256 chainId, address aavePool, address reserve) private pure returns (bytes32) {
@@ -348,9 +409,18 @@ contract RoninReactive is AbstractReactive {
     /// @notice Gas one CRON100 tick can cost right now, at the per-tick work caps.
     ///         Idle (nothing due) is CRON_BASE_GAS; each plan/retry callback adds CRON_CALLBACK_GAS.
     function estimatedBurnPerHour() public view returns (uint256 gas) {
-        if (!cronOn) return 0;
-        gas = uint256(CRON_TICKS_PER_HOUR)
-            * (CRON_BASE_GAS + (MAX_PLANS_PER_TICK + MAX_RETRIES_PER_TICK) * CRON_CALLBACK_GAS);
+        if (cronOn) {
+            gas = uint256(CRON_TICKS_PER_HOUR)
+                * (CRON_BASE_GAS + (MAX_PLANS_PER_TICK + MAX_RETRIES_PER_TICK) * CRON_CALLBACK_GAS);
+        }
+        // The Aave feed is the other continuous cost: ~65 reactions/hour, each ~320k gas.
+        if (feedOn) gas += FEED_GAS_PER_HOUR;
+    }
+
+    /// @notice Owner-settable confidence floor for ACT verdicts, in bps (default 7000 = 70%).
+    function setMinConfidence(uint16 minConfidenceBps_) external onlyOwner {
+        require(minConfidenceBps_ <= 10_000, "bps");
+        minConfidenceBps = minConfidenceBps_;
     }
 
     /// @notice The same estimate in wei at a given gas price.
@@ -412,7 +482,7 @@ contract RoninReactive is AbstractReactive {
         } else if (log_.topic0 == POOL_ADDED_TOPIC && log_.opCode == 2 && src == c.vault) {
             // Dynamic subscription: the vault whitelisted a new pool; start watching it right now.
             _watchPool(chainId, address(uint160(log_.topic1)));
-        } else if (log_.topic0 == AAVE_RESERVE_TOPIC && log_.opCode == 2) {
+        } else if (log_.topic0 == AAVE_RESERVE_TOPIC && log_.opCode == 2 && feedOn) {
             // Real Aave V3 rate feed: the Aave Pool itself emits ReserveDataUpdated on every supply / borrow /
             // repay / withdraw of the reserve we subscribed to (filtered by topic1 = reserve).
             address adapter = aaveAdapter[_aaveKey(chainId, src, address(uint160(log_.topic1)))];
@@ -497,11 +567,19 @@ contract RoninReactive is AbstractReactive {
         Chain storage c = chains[chainId];
         uint256 id = log_.topic1;
         address target = address(uint160(log_.topic2));
-        (uint8 action,,, uint256 requestId) = abi.decode(log_.data, (uint8, uint16, bytes32, uint256));
+        (uint8 action, uint16 confidence,, uint256 requestId) = abi.decode(log_.data, (uint8, uint16, bytes32, uint256));
 
         uint256 reqAt = requestTs[_key(chainId, requestId)];
         verdictReqTs[_key(chainId, id)] = reqAt;
         emit VerdictSeen(chainId, id, action, reqAt == 0 ? 0 : block.timestamp - reqAt, log_.txHash);
+
+        // Do not spend a callback on an ACT the vault would reject for low confidence. The gate is re-armed like
+        // an IGNORE, so the pair is only asked again once its rates actually move.
+        if (action == 1 && confidence < minConfidenceBps) {
+            emit VerdictBelowThreshold(chainId, id, confidence, minConfidenceBps);
+            _armGate(chainId, target);
+            return;
+        }
 
         if (action == 3) {
             emit PauseRequested(chainId, id);

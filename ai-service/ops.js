@@ -46,6 +46,8 @@ const payAbi = parseAbi([
 const rscAbi = parseAbi([
   "function estimatedBurnPerHour() view returns (uint256)",
   "function cronOn() view returns (bool)",
+  "function feedOn() view returns (bool)",
+  "function watchdog() view returns (bool)",
   "function activePlans() view returns (uint256)",
   "function pendingActions() view returns (uint256)",
 ]);
@@ -160,15 +162,24 @@ async function cycle() {
     try {
       // The RSC's own estimate of what a cron tick costs at the per-tick caps, so the top-up threshold can
       // be sanity-checked against the burn instead of guessed.
-      const [gasPerHour, cronOn, plans, actions] = await Promise.all([
+      const [gasPerHour, cronOn, feedOn, watchdog, plans, actions] = await Promise.all([
         lasna.pub.readContract({ address: RSC, abi: rscAbi, functionName: "estimatedBurnPerHour" }),
         lasna.pub.readContract({ address: RSC, abi: rscAbi, functionName: "cronOn" }),
+        lasna.pub.readContract({ address: RSC, abi: rscAbi, functionName: "feedOn" }),
+        lasna.pub.readContract({ address: RSC, abi: rscAbi, functionName: "watchdog" }),
         lasna.pub.readContract({ address: RSC, abi: rscAbi, functionName: "activePlans" }),
         lasna.pub.readContract({ address: RSC, abi: rscAbi, functionName: "pendingActions" }),
       ]);
       rscRow.cron = { on: cronOn, gasPerHour: Number(gasPerHour), activePlans: Number(plans), pendingActions: Number(actions) };
+      rscRow.feed = { on: feedOn };
       if (!cronOn && (plans > 0n || actions > 0n)) {
         console.error(`!!! CRON is OFF but the RSC still has work (plans=${plans}, unacked=${actions}) — check the subscription !!!`);
+      }
+      // The Aave feed is a continuous cost. With no demo running it is pure burn, so say so loudly.
+      if (feedOn && plans === 0n && actions === 0n && !watchdog) {
+        console.warn(
+          `!!! Aave feed is ON with no demo running (estimated ${Number(gasPerHour)} gas/h) — call disableFeed() to stop spending lREACT !!!`,
+        );
       }
     } catch {
       /* older build without the estimator: ignore */

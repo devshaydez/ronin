@@ -113,6 +113,18 @@ contract RoninReactiveTest is Test {
     }
 
     function _verdict(uint256 chainId, address reg, uint256 id, address target, uint8 action, uint256 requestId) internal {
+        _verdictWithConfidence(chainId, reg, id, target, action, 9000, requestId);
+    }
+
+    function _verdictWithConfidence(
+        uint256 chainId,
+        address reg,
+        uint256 id,
+        address target,
+        uint8 action,
+        uint16 confidence,
+        uint256 requestId
+    ) internal {
         _react(
             _log(
                 chainId,
@@ -121,7 +133,7 @@ contract RoninReactiveTest is Test {
                 id,
                 uint256(uint160(target)),
                 3,
-                abi.encode(action, uint16(9000), bytes32(0), requestId)
+                abi.encode(action, confidence, bytes32(0), requestId)
             )
         );
     }
@@ -310,6 +322,105 @@ contract RoninReactiveTest is Test {
         _rate(BASE, poolB, 300, 3500); // mock stress pool at 3%
         _aave(aavePool, reserve, 6e25, 7e25); // Aave at 6%: gap 300 bps
         assertEq(_countSel(reqB, IRequesterCallbacks.requestDecision.selector), 1);
+    }
+
+    function _configureAave() internal returns (address aavePool, address reserve, address adapter) {
+        aavePool = makeAddr("aavePool");
+        reserve = makeAddr("usdc");
+        adapter = makeAddr("adapter");
+        rsc.configureAave(BASE, aavePool, reserve, adapter);
+    }
+
+    function test_configureAaveTurnsTheFeedOnAndCountsItInTheBurnEstimate() public {
+        rsc.setParams(50, 9500, 150, 900, 0, 0); // no cron work
+        assertEq(rsc.estimatedBurnPerHour(), 0);
+        _configureAave();
+        assertTrue(rsc.feedOn());
+        assertEq(rsc.estimatedBurnPerHour(), rsc.FEED_GAS_PER_HOUR());
+    }
+
+    function test_disableFeedUnsubscribesAndDropsTheEstimateToZero() public {
+        rsc.setParams(50, 9500, 150, 900, 0, 0);
+        _configureAave();
+        uint256 unsubs = MockSystem(SYSTEM).unsubs();
+        uint256 subs = MockSystem(SYSTEM).subs();
+
+        vm.expectEmit(true, false, false, false);
+        emit FeedDisabled(1);
+        rsc.disableFeed();
+
+        assertFalse(rsc.feedOn());
+        assertEq(MockSystem(SYSTEM).unsubs(), unsubs + 1);
+        assertEq(rsc.estimatedBurnPerHour(), 0);
+
+        rsc.enableFeed();
+        assertTrue(rsc.feedOn());
+        assertEq(MockSystem(SYSTEM).subs(), subs + 1);
+        assertEq(rsc.estimatedBurnPerHour(), rsc.FEED_GAS_PER_HOUR());
+    }
+
+    function test_feedToggleIsOwnerOnly() public {
+        _configureAave();
+        vm.startPrank(makeAddr("stranger"));
+        vm.expectRevert("only owner");
+        rsc.disableFeed();
+        vm.expectRevert("only owner");
+        rsc.enableFeed();
+        vm.stopPrank();
+    }
+
+    function test_feedDisabledIgnoresAaveEvents() public {
+        (address aavePool, address reserve, address adapter) = _configureAave();
+        rsc.disableFeed();
+        _aave(aavePool, reserve, 5e25, 7e25);
+        (uint256 rate,,,,,,,) = rsc.pool(BASE, adapter);
+        assertEq(rate, 0);
+        rsc.enableFeed();
+        _aave(aavePool, reserve, 5e25, 7e25);
+        (rate,,,,,,,) = rsc.pool(BASE, adapter);
+        assertEq(rate, 500);
+    }
+
+    // ───────────── confidence pre-check ─────────────
+
+    event VerdictBelowThreshold(
+        uint256 indexed chainId, uint256 indexed verdictId, uint16 confidenceBps, uint16 minConfidenceBps
+    );
+
+    function test_lowConfidenceActIsNotSentToTheVault() public {
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 900, 3500);
+
+        vm.expectEmit(true, true, false, true);
+        emit VerdictBelowThreshold(BASE, 1, 6000, 7000);
+        _verdictWithConfidence(BASE, regB, 1, poolB, 1, 6000, 1);
+
+        assertEq(_countSel(vaultB, IVaultCallbacks.rebalance.selector), 0);
+    }
+
+    function test_minConfidenceIsOwnerSettable() public {
+        rsc.setMinConfidence(9500);
+        assertEq(rsc.minConfidenceBps(), 9500);
+        _rate(BASE, poolA, 500, 4000);
+        _rate(BASE, poolB, 900, 3500);
+
+        _verdictWithConfidence(BASE, regB, 1, poolB, 1, 9000, 1);
+        assertEq(_countSel(vaultB, IVaultCallbacks.rebalance.selector), 0);
+
+        _verdictWithConfidence(BASE, regB, 2, poolB, 1, 9500, 2);
+        assertEq(_countSel(vaultB, IVaultCallbacks.rebalance.selector), 1);
+    }
+
+    function test_minConfidenceIsOwnerOnly() public {
+        vm.prank(makeAddr("stranger"));
+        vm.expectRevert("only owner");
+        rsc.setMinConfidence(5000);
+    }
+
+    function test_lowConfidencePauseIsStillDelivered() public {
+        // The floor only gates ACT: a cautious PAUSE must still reach the vault.
+        _verdictWithConfidence(BASE, regB, 1, address(0), 3, 1000, 1);
+        assertEq(_countSel(vaultB, IVaultCallbacks.pauseByVerdict.selector), 1);
     }
 
     function test_selfFundsReservesOnCronTick() public {
@@ -544,6 +655,8 @@ contract RoninReactiveTest is Test {
 
     event CronEnabled(uint256 activePlans, uint256 pendingActions, bool watchdog, uint256 rescoreEveryTicks);
     event CronDisabled(uint256 activePlans, uint256 pendingActions, bool watchdog, uint256 rescoreEveryTicks);
+    event FeedEnabled(uint256 feeds);
+    event FeedDisabled(uint256 feeds);
 
     function test_cronFollowsPlansInAndOut() public {
         // Turn the deploy-time rescore off: with it on, cron is legitimately always needed.
