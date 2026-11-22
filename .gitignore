@@ -1,6 +1,7 @@
 # Secrets
 .env
 .env.*
+!.env.example
 
 # Dependencies (installed with `forge install`, see README)
 lib/
@@ -13,6 +14,7 @@ broadcast/
 # Node
 node_modules/
 ai-service/latency.jsonl
+ui/dist/
 
 # Deploy logs kept locally for evidence, not committed
 deploy-out/
