@@ -1,0 +1,9 @@
+**HEALTHY** (proven) — No debt, reserves 0.4292435 REACT (at least 10 reactions), 39/39 subscriptions active, 0 recent reverts (0.0/hour).
+- [funding] FUNDED (proven): Omni: debt 0 REACT, reserves 0.4292435 REACT. Legacy proxy: debt 0 REACT, reserves 0 REACT. Contract balance 0 REACT (not counted as funding unless the contract implements pay()).
+  - eth_call 0x8888888888888888888888888888888888888888: debt(address), reserves(address) on the Omni system contract
+  - eth_call 0x0000000000000000000000000000000000ffffff: debts(address), reserves(address) on the legacy proxy; eth_getBalance on the contract
+- [funding] PAYMENT_EVENTS (proven): Last 20000 blocks: 2 PaymentFailure, last BlacklistContract 9083743, last WhitelistContract 9084034.
+  - BlacklistContract 0x8aa1123f6ef2a2b5a07d99d032c01168841a1a1d22aceb445f5a48f43acf0632: block 9083743 (https://lasna.reactscan.net/tx/0x8aa1123f6ef2a2b5a07d99d032c01168841a1a1d22aceb445f5a48f43acf0632)
+  - WhitelistContract 0xb38f70b70c3aeb14382f689b0cf99ed8868e7043d35770de82bcbb88943ace5d: block 9084034 (https://lasna.reactscan.net/tx/0xb38f70b70c3aeb14382f689b0cf99ed8868e7043d35770de82bcbb88943ace5d)
+  - PaymentFailure 0x61c036b1ce77e1c51cc527ac1aeafa9e5e0f0124319d99ed065f33be43bf4039: block 9079352 (https://lasna.reactscan.net/tx/0x61c036b1ce77e1c51cc527ac1aeafa9e5e0f0124319d99ed065f33be43bf4039)
+  - PaymentFailure 0x8aa1123f6ef2a2b5a07d99d032c01168841a1a1d22aceb445f5a48f43acf0632: block 9083743 (https://lasna.reactscan.net/tx/0x8aa1123f6ef2a2b5a07d99d032c01168841a1a1d22aceb445f5a48f43acf0632)

@@ -1,0 +1,6 @@
+**OK_CALLBACK** (cannot_prove) — No defects found in the callback request(s).
+- [callback] REQUEST (proven): To 0xCD50707FED3Ef829b0965D6DDCF0Dab56e5cce66 on chain 84532, gasLimit 1000000, selector 0x065a45c7
+- [callback] GAS_BUDGET (likely): Of gasLimit 1000000, about 846312 reaches the target (proxy overhead 130000, intrinsic ~23688).
+- [callback] DEST_FUNDING (proven): Recipient on Base Sepolia (84532) now: debt 0 native, reserves 0.0019556156204 native at proxy 0x476F44b11F5C942c58f4c8E3d0300E5710743585.
+Limits:
+- The type of the first callback parameter was not verified; pass functionSignature to check it.

@@ -4,9 +4,89 @@ Live testnet deployment of Ronin, including standing orders (plans) and callback
 Every transaction below has receipt status `1` unless noted.
 Deployed **2026-11-19** with Foundry 1.9.0 (solc 0.8.29, `evm_version = cancun`, `via_ir = true`).
 
-## CURRENT — 2026-11-20 redeploy (dynamic CRON, per-tick caps, backoff)
+## CURRENT — 2026-11-22 deployment (Phase B2 evidence)
 
-This is the live build; everything below it is the previous deployment, kept for reference.
+This is the live build. The 2026-11-20 deployment below is retained as **PREVIOUS**.
+
+| Contract | Chain | Address |
+|---|---|---|
+| `RoninReactive` | Lasna | `0x69107baF143C38722744a09e3f27c3c076469d5f` |
+| `RoninVault` | Base Sepolia | `0xCD50707FED3Ef829b0965D6DDCF0Dab56e5cce66` |
+| `DecisionRequester` | Base Sepolia | `0xd3f0BD4a232AD8061DD119564AF64D8b6f340eBb` |
+| `AIVerdictRegistry` | Base Sepolia | `0x1Ba4da5288751378c1813a256885c7e376592D34` |
+| `AaveV3Adapter` | Base Sepolia | `0x6cE1f923B595Ade17FaF04fdE6700766DC7bF568` |
+| `MockLendingPool` (stress) | Base Sepolia | `0x74815327b2650467eba2aF4D37e6D2Bd9467DbE0` |
+| USDC asset | Base Sepolia | `0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f` |
+| `RoninVault` | Unichain Sepolia | `0xce75a97917c8fd52eA30684F0988FAe4485D64cD` |
+| `DecisionRequester` | Unichain Sepolia | `0xFcC603B48675Ae138890BF4A155A13A378DAA5B5` |
+| `AIVerdictRegistry` | Unichain Sepolia | `0xA97D4F33F029928B8c0B54Ee47129Aa39F51007f` |
+| `MockUSDC` | Unichain Sepolia | `0x0Bd0E5FDa3e21a23D0ef9B3267d1541c2AbE58F6` |
+| `MockLendingPool` (16 pools, A–P) | Unichain Sepolia | see `vault.pools(i)`; target U `0x79387679Eb59e5692b3FC566Dcc3fE484eBDB9F4` |
+| Callback proxy | Base Sepolia | `0x476F44b11F5C942c58f4c8E3d0300E5710743585` |
+| Callback proxy | Unichain Sepolia | `0x775c9B990ADe401060B78D0e98684eEf8d2466C1` |
+
+> The deployment transactions for this specific build are not reproduced here; the address map above is from the
+> live contracts. Every Phase B2 action hash is listed below and in `ai-service/PROOF.md`.
+
+### Phase B2 evidence (2026-11-23 run)
+
+**Stale-data self-heal**
+
+| Event | Tx |
+|---|---|
+| Base stress `setRate(300,3500)` | `0x608868ad8cc4aa49c5f15930b8c7dc41b2f9f7f93948e82522aa8e2261972ff5` |
+| Lasna `StaleHealed(84532)` | `0x2d5cb5f47e954b081c1cd932b19648a8ba65ccbe8c82376e2272ca82ea473c4e` |
+| Base `UnpausedByReactive(STALE_DATA)` | `0x056c4b4a56a699a0d9ce1abe0e3a41b7b8324901e02465870ebd6c6056b71bb5` |
+
+**Omnichain breaker + heal**
+
+| Event | Tx |
+|---|---|
+| Unichain U `setRate(2400,9700)` | `0xfe66a1bb4d49350c74f0348159980a361166b800ad2cb10a8f30c6613934379b` |
+| Lasna `BreakerTripped(1301,U,9700)` | `0x691e0c939e31a06f040bf39dea366bc38151c2cbbbfe04422bf941734c3aea64` |
+| U `EmergencyExit` (500 USDC) | `0x58b4999a16631e27b6daac5273f969d8f26e0ef282ae7c9725b0c112c7a02bf0` |
+| Lasna `ExitObserved` + `OmniPause(84532)` | `0x3a006972dcbb0e90560c7c56faa89a187400a899975720f472ee227e64eb64bb` |
+| Base `PausedByReactive(OMNI_BREAKER)` | `0x97e7dd3be8a95acc252efa5073d19a6669f30bce0b3e89e7e25f3abd400647e9` |
+| U `setRate(2400,3500)` heal | `0x44845c46081d0570645982135035319c98240c98fb607fceb39e871720cf89d6` |
+| Lasna `BreakerCleared` + `OmniHeal(84532)` | `0xc2a51d4270dcb3a43f5fc07dea609ff65d23a15bee31b7224477dd82a9b1ab56` |
+| Base `UnpausedByReactive(OMNI_BREAKER)` | `0x1bcddab6b02b99651e4e719c40e9076ea5cc4f3da6bad99f8f629e5e6073a723` |
+
+**YIELD_ONLY / YIELD_THEN_PRINCIPAL**
+
+| Event | Tx |
+|---|---|
+| Mint 5 yield USDC | `0x236d8063aa03da4e72de48b628c8e9df14b4cabd7cae86144acd373d63d1c4fb` |
+| `accrue(vault,5e6)` | `0x4f15d987e19d75bfbcfa090266e72b55112b2cb5cbb57db15c9b640173cca2b2` |
+| YIELD_ONLY plan 1 (1 USDC × 3) | `0x89ae2128313e1acf4fae478d42011516a1c9c89527d093f8297fb17efe5363f5` |
+| Payouts 1/2/3, all `fromYield=1e6`, `fromPrincipal=0` | `0x05c46e…`, `0xc6150b…`, `0x89de8d…` (full hashes in `PROOF.md`) |
+| YIELD_THEN_PRINCIPAL plan 2 (5 USDC) | `0xa5a827f9dafa2e8f6cf04f28e1849be6166903e9165a7ebb2f9fdda4a71f4ed6` |
+| Executed: 1.999999 yield + 3.000001 principal | `0xbdedac6bfd0c82f619e0e635db842ccbe4cd284d109abead35809861b1a0f69e` |
+| YIELD_ONLY plan 3 `PlanSkipped` (no yield) | `0x9d25fa33507fce94a6906959babab3b0f6e957bc744870050297e480e027e587` |
+
+**Retry that heals**
+
+| Event | Tx |
+|---|---|
+| AI `PAUSE` verdict 40 | `0x2d7cc90190193cbe98a199b96d05034f4422c2fdfd8279ac57cdf475e2e586f4` |
+| `VerdictSeen` 44 (ACT, confidence 7000, target U) + `RebalanceRequested` | `0x3361c4be7390f78f8092d4b20b0abb9791b7876a897683995c85f38c16250cca` |
+| Admin `unpause()` | `0x12b0575b35776d0d71a94dbef7c07f9e2ce77a127204aa341617ce8bd2c398be` |
+| Retry callback for verdict 44 | `0x9e80c7d4e81944796819688f5404cb3dfd80f90231a9a69e903b5e5b3fceebfa` |
+| `Rebalanced(44,U,498.762144,990.000000)` | `0xa71bcca7a280c61258e0050226b3287bcfdf5d416aa2cef386ce602a32b54ece` |
+| Lasna `LoopClosed(1301,44,683s)` | `0x21032d303e9860d0b7c84e6a70aad5da9728766d3a81f78ed3a6c325a6a82dc1` |
+
+**Reactive MCP**: full text in `docs/mcp-evidence/`. `get_rc_health` = **HEALTHY**, debt 0, reserves
+0.4292435 lREACT, 39/39 subscriptions, 0 reverts/hour; `list_subscriptions` = 39 active, 0 inactive.
+
+### Final minimum-cost state
+
+`feedOn=false`, `cronOn=false`, `watchdog=false`, `activePlans=0`, `pendingActions=0`,
+`estimatedBurnPerHour()=0`; Base vault unpaused 990.000000 USDC, Unichain vault unpaused 997.000000 USDC;
+RSC reserves 0.4292435 lREACT, debt 0. This run consumed **3.8075081 lREACT** after three 1 lREACT top-ups,
+above the 2.5 lREACT worst-case estimate (see `PROOF.md` for the breakdown and the frozen-pool retry history).
+
+## PREVIOUS — 2026-11-20 redeploy (dynamic CRON, per-tick caps, backoff)
+
+This was the live build before 2026-11-22; everything in this section is historical.
 
 | Contract | Chain | Address | Tx | Block |
 |---|---|---|---|---|

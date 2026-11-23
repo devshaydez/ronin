@@ -1,0 +1,10 @@
+**CALLBACK_NOT_POSTED** (cannot_prove) — Reaction succeeded; callback problem: No delivery result for the callback (log 5) to Unichain Sepolia, and no CallbackPosted event exists on this network in the last 30,000 blocks: results are not being posted back, so delivery cannot be read from Reactive.
+- [reaction] REACTED (proven): react() succeeded and requested 1 callback(s).
+  - reactive tx 0x691e0c939e31a06f040bf39dea366bc38151c2cbbbfe04422bf941734c3aea64: block 9076500, gasUsed 125218 (https://lasna.reactscan.net/tx/0x691e0c939e31a06f040bf39dea366bc38151c2cbbbfe04422bf941734c3aea64)
+- [callback] GAS_BUDGET (likely): Of gasLimit 1000000, about 846312 reaches the target (proxy overhead 130000, intrinsic ~23688).
+- [callback] DEST_FUNDING (proven): Recipient on Unichain Sepolia (1301) now: debt 0 native, reserves 0.0019777273232 native at proxy 0x775c9B990ADe401060B78D0e98684eEf8d2466C1.
+- [delivery] CALLBACK_NOT_POSTED (cannot_prove): No delivery result for the callback (log 5) to Unichain Sepolia, and no CallbackPosted event exists on this network in the last 30,000 blocks: results are not being posted back, so delivery cannot be read from Reactive.
+  - getCallbacks 0x691e0c939e31a06f040bf39dea366bc38151c2cbbbfe04422bf941734c3aea64: empty
+- [delivery] NO_FAILURE_SEEN (cannot_prove): No CallbackFailure for 0xce75a97917c8fd52eA30684F0988FAe4485D64cD at the Unichain Sepolia proxy in blocks 68606742-68610392: the callback either succeeded or was never delivered. Check the recipient's own events.
+Limits:
+- The type of the first callback parameter was not verified; pass functionSignature to check it.

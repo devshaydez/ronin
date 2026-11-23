@@ -84,32 +84,36 @@ pools on one chain, and the omnichain layer is protection plus a yield signal.
 
 ## Trust model
 Vault callbacks need (a) the Reactive callback proxy as `msg.sender` and (b) our Reactive contract as the injected
-sender. For AI-driven moves the vault re-reads the verdict from the registry: right action, confidence >= 70%,
-under 15 min old, never used, target matches, only whitelisted pools, max 50% of TVL per call, cooldown.
+sender. For AI-driven moves the vault re-reads the verdict from the registry: right action, confidence at or above the
+configured floor (70% default; **60%** on this deployment, matching the RSC), under 15 min old, never used, target
+matches, only whitelisted pools, max 50% of TVL per call, cooldown.
 Reactive-only actions (pause, heal, exit) cannot send funds to a third party, and `unpauseByReactive` only lifts a
 pause set for the same reason (it can never lift an AI or admin pause).
 
 ## Live deployment (Base Sepolia + Unichain Sepolia + Reactive Lasna)
 
+Current build: **2026-11-22 deployment**. Addresses below are live; the full address map and every Phase B2
+evidence hash are in [`DEPLOYMENTS.md`](DEPLOYMENTS.md).
+
 | Contract | Base Sepolia (84532) | Unichain Sepolia (1301) |
 |---|---|---|
-| `RoninVault` | `0x1827b78aCEBb5085CFB7C6DCC474414983348Ec9` | `0x4384345dD2fCA2656A7E7105D74D313e0eF5A27B` |
-| `DecisionRequester` | `0x2780a1a41e73859b06683D6da0d993Dae0b797f9` | `0xd62B60a3a9893B43f91CC5233B2B50b6E973732F` |
-| `AIVerdictRegistry` | `0x0fe0591be4eb54DE1Be6Ec53EBFaC05F86B9758D` | `0xd25d9bE29D617305Dc1F39600604C00DA3D99eC9` |
-| asset | Aave USDC `0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f` | `MockUSDC` `0xeFBcde7Af346A2aCd1429941F6F53B4Ed5c4AD1A` |
-| pools | Aave adapter `0x4384345dD2fCA2656A7E7105D74D313e0eF5A27B` + stress `0xa8E0681Ca84A84CB971bcD8485d91e03DB96c740` | A `0x20a6168e96a793e66733aFedd542DD6583eB7A53`, B `0x75CFCe08ca24a68F51373f1643c5F273B6e0265f` |
+| `RoninVault` | `0xCD50707FED3Ef829b0965D6DDCF0Dab56e5cce66` | `0xce75a97917c8fd52eA30684F0988FAe4485D64cD` |
+| `DecisionRequester` | `0xd3f0BD4a232AD8061DD119564AF64D8b6f340eBb` | `0xFcC603B48675Ae138890BF4A155A13A378DAA5B5` |
+| `AIVerdictRegistry` | `0x1Ba4da5288751378c1813a256885c7e376592D34` | `0xA97D4F33F029928B8c0B54Ee47129Aa39F51007f` |
+| asset | Aave USDC `0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f` | `MockUSDC` `0x0Bd0E5FDa3e21a23D0ef9B3267d1541c2AbE58F6` |
+| pools | Aave adapter `0x6cE1f923B595Ade17FaF04fdE6700766DC7bF568` + stress `0x74815327b2650467eba2aF4D37e6D2Bd9467DbE0` | 16 mock pools (see `DEPLOYMENTS.md`); target U `0x79387679Eb59e5692b3FC566Dcc3fE484eBDB9F4` |
 | callback proxy | `0x476F44b11F5C942c58f4c8E3d0300E5710743585` | `0x775c9B990ADe401060B78D0e98684eEf8d2466C1` |
 
-Reactive Lasna (5318007): `RoninReactive` = `0x8f52a476Ff46D070a4450Fb7283Cb1De6A886813`
+Reactive Lasna (5318007): `RoninReactive` = `0x69107baF143C38722744a09e3f27c3c076469d5f`
 (`minGapBps=50`, `breakerUtilBps=9500`, `spikeBps=150`, `staleAfter=900`, `requestCooldown=15`,
-`rescoreEveryTicks=5`, `retryAfter=360`, `maxVerdictAge=900`, `MAX_ATTEMPTS=3`, `MAX_PLANS_PER_TICK=5`,
-`requestBackoff=600`, `maxRequestsPerHour=12`).
+`rescoreEveryTicks=0`, `retryAfter=180`, `maxVerdictAge=900`, `MAX_ATTEMPTS=3`, `MAX_PLANS_PER_TICK=3`,
+`requestBackoff=600`).
 
-Every deploy/wiring/funding/demo transaction hash is in [`DEPLOYMENTS.md`](DEPLOYMENTS.md). Live state at the last
-check (2026-11-20 20:15 UTC): RSC reserves **0** and debt **2.76e15 wei** (the contract is halted until the next
-`depositTo`; see the budget table in `DEPLOYMENTS.md`), filters `{"1301":13,"84532":14}`, 11 `DecisionRequested`
-on Base (ids 1-11) and none on Unichain. Pool `0x011121a7476Dcc6E342FAA64a0c03bd9A093d1f5` was added with
-`vault.addPool` and became watched by the RSC on its own (`isWatched == true`, Base filters 13 → 14).
+Live state at the end of the Phase B2 run (2026-11-23): RSC reserves **0.4292435 lREACT**, debt **0**; MCP
+`HEALTHY`, 39/39 subscriptions, 0 reverts/hour; `feedOn=false`, `cronOn=false`, `watchdog=false`, no active plans,
+no pending actions, `estimatedBurnPerHour()=0`; both vaults unpaused (Base 990 USDC, Unichain 997 USDC). The run
+consumed **3.8075081 lREACT**, above the quoted worst case, because reserves hit zero twice and pool U was left
+frozen by the breaker; both are documented in [`ai-service/PROOF.md`](ai-service/PROOF.md).
 
 ## Reproduce
 
