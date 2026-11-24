@@ -287,14 +287,19 @@ appendix listing the reactions that never reached a destination.
 ### Measured Phase B latency (2026-11-22)
 
 Fresh deployment on Reactive Lasna + Base Sepolia + Unichain Sepolia, mock lending pools on Unichain and the
-Aave-mode vault on Base. Ten successful AI-gated rebalances and ten standing-order payouts were measured from
+Aave-mode vault on Base. Ten normal AI-gated rebalances and ten standing-order payouts were measured from
 their on-chain events (origin tx → Reactive tx → destination tx). Full per-loop rows are in
 [`ai-service/PROOF.md`](ai-service/PROOF.md).
 
+**Recovery is excluded from these medians.** The 683 s verdict-44 loop is a recovery event, not loop speed:
+its first callback hit a paused vault, an admin unpaused the vault, and the RSC healed it on attempt 2 of 3.
+It is reported as recovery in [`DEPLOYMENTS.md`](DEPLOYMENTS.md) and [`ai-service/PROOF.md`](ai-service/PROOF.md).
+
 | Loop type | n | Origin → Reactive | Origin → Destination | Request → Rebalanced |
 |---|---|---|---|---|
-| AI-gated rebalance | 10 | median **19 s**, worst **23 s** | median **22 s**, worst **26 s** | median **20 s**, worst **24 s** (AI included) |
+| AI-gated rebalance (normal loops only) | 10 | median **19 s**, worst **23 s** | median **22 s**, worst **26 s** | median **20 s**, worst **24 s** (AI included) |
 | Standing-order payout | 10 | **<1 s** | median **755 s**, worst **1230 s** | due → executed: median **50 s**, worst **102 s** |
+| **Recovery: verdict 44 retry (excluded)** | 1 | — | — | **683 s**: paused vault + admin unpause + retry, attempt 2 of 3 |
 
 For payouts, origin → destination grows with the 120 s cadence (it is time since `PlanCreated`), so the execution
 lateness is the `due → executed` column. The AI column is `LoopClosed.requestToRebalanceSecs`, i.e. from
