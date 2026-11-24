@@ -4,7 +4,8 @@ import { Pill } from '../components/Pill';
 import { makeHash } from '../data/mock';
 import { useMemo } from 'react';
 import { useNow } from '../hooks/useNow';
-import { rel } from '../lib/format';
+import { usePoolFrozen } from '../hooks/usePoolFrozen';
+import { rel, shortAddr } from '../lib/format';
 import { useApp } from '../state/AppState';
 
 const PROTECTIONS = [
@@ -21,6 +22,8 @@ const STATES = {
 export default function Safety() {
   const { mode } = useApp();
   const now = useNow();
+  const poolState = usePoolFrozen();
+  const frozen = poolState.frozen === true;
   const S = mode === 'paused' || mode === 'exit' ? STATES.protecting : mode === 'rec' ? STATES.recovering : STATES.clear;
   const triggered = mode === 'exit' || mode === 'rec' ? 0 : mode === 'paused' ? 2 : -1;
   const hashes = useMemo(() => Array.from({ length: 7 }, makeHash), []);
@@ -39,6 +42,29 @@ export default function Safety() {
         <div className="mx-3 grid h-[84px] w-[84px] flex-none place-items-center rounded-full border-[1.5px]" style={{ color: S.color, borderColor: S.color, boxShadow: `0 0 0 10px color-mix(in srgb, ${S.color} 12%, transparent), 0 0 0 22px color-mix(in srgb, ${S.color} 6%, transparent)` }}><Icon name={S.icon} size={38} /></div>
         <div><div className="text-[44px] font-normal leading-none tracking-[-0.045em] sm:text-[56px]">{S.title}</div><p className="mt-2 max-w-[520px] text-mut">{S.text}</p></div>
       </div>
+
+      <Card className="mt-4">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h3 className="text-lg font-medium tracking-tight">Pool freeze after a breaker exit</h3>
+            <p className="mt-1 max-w-[720px] text-[13px] text-mut">Read from the Unichain vault's <code>poolFrozen(pool)</code> flag, not from a paused-vault label.</p>
+          </div>
+          <Pill tone={!poolState.configured ? 'mute' : frozen ? 'bad' : 'ok'} icon={frozen ? 'pause' : 'ok'}>
+            {!poolState.configured ? 'Live read not configured' : poolState.loading ? 'Reading vault…' : frozen ? 'This pool is frozen' : 'This pool is not frozen'}
+          </Pill>
+        </div>
+        <p className="mt-4 max-w-[820px] text-[15px]">
+          {frozen
+            ? 'Vaults resumed automatically; this pool needs a human review before it gets funds again.'
+            : 'Vaults resume automatically when the breaker clears. A pool that the breaker exited does not: it stays frozen until an admin reviews it. The rule is: “Vaults resumed automatically; this pool needs a human review before it gets funds again.”'}
+        </p>
+        <p className="mt-2 text-[13px] text-mut">
+          {poolState.configured
+            ? <>Vault {shortAddr(poolState.pool!)} is checked live. {frozen ? 'Only an admin can clear this freeze; the automatic heal will not.' : 'If this pool is exited again, the freeze remains after the vault resumes.'}</>
+            : <>Set <code>VITE_UNICHAIN_VAULT_ADDRESS</code> and <code>VITE_POOL_U_ADDRESS</code> to read the live flag. The rule is the same on-chain: only an admin <code>unfreeze(pool)</code> clears it.</>}
+        </p>
+      </Card>
+
       <div className="mt-4 grid gap-4 md:grid-cols-3">
         {PROTECTIONS.map((p, i) => (
           <Card key={p.name} className="!p-5">

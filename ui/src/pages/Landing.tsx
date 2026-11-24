@@ -4,6 +4,7 @@ import { animate, motion, useInView, useReducedMotion } from 'framer-motion';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Icon } from '../components/Icon';
+import { LatencyBreakdown } from '../components/LatencyBreakdown';
 import { Logo } from '../components/Logo';
 import { Segmented } from '../components/Segmented';
 import { useNow } from '../hooks/useNow';
@@ -28,9 +29,9 @@ function CountUp({ to, decimals = 0, suffix = '' }: { to: number; decimals?: num
 }
 
 // Sample values for the prototype. In the app each one is read from the chain, and an empty vault shows a real 0.
-const STATS = [
+const STATS: Array<{ x: string; y: number; to: number; label: string; d?: number; s?: string }> = [
   { x: '6%', y: 230, to: 184220, label: 'Total deposited, USDC' }, { x: '27%', y: 182, to: 1286, label: 'Loops completed' },
-  { x: '48%', y: 134, to: 14.2, d: 1, s: 's', label: 'Median loop time' }, { x: '69%', y: 86, to: 3172, label: 'Payouts made' },
+  { x: '48%', y: 134, to: 22, s: 's', label: 'Median normal loop' }, { x: '69%', y: 86, to: 3172, label: 'Payouts made' },
   { x: '87%', y: 38, to: 2, label: 'Chains connected' },
 ];
 
@@ -107,13 +108,13 @@ export default function Landing() {
           {STATS.map((s) => (
             <div key={s.label} className="absolute border-l border-mut pl-[18px]" style={{ left: s.x, top: s.y, height: 300 - s.y }}>
               <i className="absolute -left-1.5 -top-1.5 h-[11px] w-[11px] rounded-full border-[1.5px] border-[#19c3ac] bg-white" />
-              <b className="block pt-[22px] text-[clamp(34px,4vw,52px)] font-normal leading-none tracking-[-0.04em]"><CountUp to={s.to} decimals={s.d} suffix={s.s} /></b>
+              <b className="block pt-[22px] text-[clamp(34px,4vw,52px)] font-normal leading-none tracking-[-0.04em]"><CountUp to={s.to} decimals={s.d ?? 0} suffix={s.s} /></b>
               <small className="mt-1.5 block max-w-[200px] text-[13px] text-mut">{s.label}</small>
             </div>
           ))}
         </div>
       </div>
-      <div className="mx-auto grid max-w-[1180px] grid-cols-2 gap-6 px-7 pt-2 md:hidden">{STATS.map((s) => <div key={s.label}><b className="block text-4xl font-normal tracking-[-0.04em]"><CountUp to={s.to} decimals={s.d} suffix={s.s} /></b><small className="text-[13px] text-mut">{s.label}</small></div>)}</div>
+      <div className="mx-auto grid max-w-[1180px] grid-cols-2 gap-6 px-7 pt-2 md:hidden">{STATS.map((s) => <div key={s.label}><b className="block text-4xl font-normal tracking-[-0.04em]"><CountUp to={s.to} decimals={s.d ?? 0} suffix={s.s} /></b><small className="text-[13px] text-mut">{s.label}</small></div>)}</div>
       <p className="mx-auto max-w-[1180px] px-7 pt-4 text-[13px] text-mut">Testnet. Sample values in this prototype. In the app every figure is read from the chain, and an empty vault shows a real 0.</p>
 
       <section id="how" className="mx-auto max-w-[1180px] px-7 pt-[120px] max-md:pt-20">
@@ -150,9 +151,9 @@ export default function Landing() {
         </svg>
         <div className="relative mx-auto max-w-[1180px] px-7">
           <H2>It protects itself.</H2>
-          <motion.p {...rise()} className="mt-4 max-w-[460px] text-[#98aaa6]">If something looks wrong, Ronin stops first and explains after. When things settle, it restarts on its own.</motion.p>
+          <motion.p {...rise()} className="mt-4 max-w-[460px] text-[#98aaa6]">If something looks wrong, Ronin stops first and explains after. Vaults restart on their own when things settle; a pool the breaker exited stays frozen until a human reviews it.</motion.p>
           <div className="mt-11 grid max-w-[560px] gap-3">
-            {([['pause', 'Pause', 'Deposits stop when rates or data look unsafe. Withdrawals and payouts keep working.'], ['move', 'Exit', 'If a pool fails its checks, funds are pulled out and held safe in the vault.'], ['retry', 'Self-heal', 'Once rates return to normal, the vault resumes with no one pressing a button.']] as const).map(([ic, t, d], i) => (
+            {([['pause', 'Pause', 'Deposits stop when rates or data look unsafe. Withdrawals and payouts keep working.'], ['move', 'Exit', 'If a pool fails its checks, funds are pulled out and held safe in the vault.'], ['retry', 'Self-heal', 'Vaults resume automatically once rates settle. An exited pool stays frozen for human review before it gets funds again.']] as const).map(([ic, t, d], i) => (
               <motion.div key={t} {...rise(i)} className="grid grid-cols-[auto_1fr] gap-[18px] rounded-[20px] border border-white/10 bg-white/5 p-5 transition duration-300 hover:translate-x-1.5 hover:bg-teal/10">
                 <span className="text-teal"><Icon name={ic} size={30} /></span><p><b className="block font-medium">{t}</b><span className="text-sm text-[#98aaa6]">{d}</span></p></motion.div>
             ))}
@@ -170,6 +171,7 @@ export default function Landing() {
               <b className="font-medium">{a}</b><div><em className="block text-[13px] not-italic text-mut">Transaction</em>{d}</div><div><em className="block text-[13px] not-italic text-mut">{b}</em>{c}</div><a href="#" className="whitespace-nowrap font-medium text-acc">View on explorer</a></motion.div>
           ))}
         </div>
+        <motion.div {...rise()} className="mt-4"><LatencyBreakdown /></motion.div>
       </section>
 
       <section className="mx-auto max-w-[1180px] px-7 pt-[120px] max-md:pt-20">

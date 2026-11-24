@@ -17,7 +17,15 @@ export const SAF: StepDef[] = [
   { title: 'High utilisation seen', lane: 0, detail: 'Pool B utilisation passed 92%', sec: 1 },
   { title: 'Breaker trips', lane: 1, detail: 'Reactive pauses vaults on other chains', sec: 1.4 },
   { title: 'Other vaults paused', lane: 3, detail: 'Unichain Sepolia vault paused', sec: 1.2 },
-  { title: 'Vault resumed', lane: 0, detail: 'Rates returned to normal, resumed automatically', sec: 1.5 },
+  { title: 'Vault resumed', lane: 0, detail: 'Rates returned to normal, resumed automatically; the exited pool stays frozen', sec: 1.5 },
+];
+export const REC: StepDef[] = [
+  { title: 'Vault paused by the AI', lane: 3, detail: 'Deposits stop; withdrawals and payouts keep working', sec: 1.1 },
+  { title: 'Verdict 44: move requested', lane: 1, detail: 'ACT, confidence 70%, target Pool U', sec: 1.3 },
+  { title: 'First callback hit the paused vault', lane: 3, detail: 'Reverted before moving funds; the action stays pending', sec: 1.2 },
+  { title: 'Human review: admin unpauses', lane: 3, detail: 'Unpause clears the vault pause, not the pool freeze', sec: 1.3 },
+  { title: 'Retrying (attempt 2 of 3)', lane: 1, detail: 'The RSC retries the same verdict; no new decision is needed', sec: 1.4 },
+  { title: 'Rebalanced, then healed', lane: 3, detail: '498.76 USDC moved; recovery loop closed after 683 s', sec: 1.4 },
 ];
 export const PAY: StepDef[] = [
   { title: 'Scheduled tick', lane: 1, detail: 'Standing order is due', sec: 1 },

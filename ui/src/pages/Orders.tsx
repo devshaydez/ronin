@@ -11,7 +11,7 @@ import { countdown, shortAddr, usdc } from '../lib/format';
 import { useApp } from '../state/AppState';
 
 const BADGE: Record<Order['state'], { tone: 'ok' | 'warn' | 'bad' | 'mute'; icon: IconName; text: string }> = {
-  active: { tone: 'ok', icon: 'ok', text: 'Active' }, retrying: { tone: 'warn', icon: 'retry', text: 'Retrying (attempt 2 of 3)' },
+  active: { tone: 'ok', icon: 'ok', text: 'Active' }, retrying: { tone: 'warn', icon: 'retry', text: 'Retrying' },
   skipped: { tone: 'mute', icon: 'pause', text: 'Skipped' }, stuck: { tone: 'bad', icon: 'x', text: 'Needs attention' },
   completed: { tone: 'mute', icon: 'ok', text: 'Completed' }, cancelled: { tone: 'mute', icon: 'x', text: 'Cancelled' },
 };
@@ -30,7 +30,7 @@ function OrderCard({ o, yieldNow }: { o: Order; yieldNow: number }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div><b className="text-[19px] font-medium">{o.name}</b>{' '}
           <button className="text-[13px] text-mut hover:text-ink" title={o.payee} onClick={() => { navigator.clipboard?.writeText(o.payee); toast('Address copied'); }}>{shortAddr(o.payee)} copy</button></div>
-        <Pill tone={b.tone} icon={b.icon}>{o.state === 'skipped' ? `Skipped: ${o.why}` : b.text}</Pill>
+        <Pill tone={b.tone} icon={b.icon}>{o.state === 'skipped' ? `Skipped: ${o.why}` : o.state === 'retrying' ? `Retrying (attempt ${o.attempt ?? 2} of 3)` : b.text}</Pill>
       </div>
       <div className="my-2 text-[40px] tracking-[-0.045em]">{usdc(o.amount)} <span className="text-lg text-mut">USDC</span></div>
       <div className="grid grid-cols-2 gap-3 border-t border-line pt-4 text-sm sm:grid-cols-3">
@@ -40,7 +40,7 @@ function OrderCard({ o, yieldNow }: { o: Order; yieldNow: number }) {
         <div className="col-span-2 sm:col-span-3"><span className="block text-xs text-mut">Source</span>{o.mode === 'yield' ? 'Yield only' : 'Yield, then principal'}</div>
       </div>
       {o.state === 'skipped' && <p className="mt-3 text-[13px] text-mut">Your yield is {usdc(yieldNow)} USDC, less than this payment. <button className="text-acc underline" onClick={() => patch({ mode: 'yield-principal', state: 'active' })}>Also use your deposit</button>, or wait for more yield.</p>}
-      {o.state === 'retrying' && <p className="mt-3 text-[13px] text-mut">The first attempt got no confirmation. Retrying automatically, up to 3 times.</p>}
+      {o.state === 'retrying' && <p className="mt-3 text-[13px] text-mut">Attempt {o.attempt ?? 2} of 3. The earlier callback did not complete, so the RSC is retrying automatically. This is recovery time, not a faster loop.</p>}
       <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2">
         <Button variant="outline" small onClick={() => setHist(!hist)}>History</Button>
         {live && (confirm

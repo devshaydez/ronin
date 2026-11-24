@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { Banner } from '../components/Banner';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
+import { LatencyBreakdown } from '../components/LatencyBreakdown';
 import { Pill } from '../components/Pill';
 import { Segmented } from '../components/Segmented';
 import { Sparkline } from '../components/Sparkline';
-import { BRK, LANES, proofRows, REB, RES } from '../data/pipeline';
+import { BRK, LANES, proofRows, REB, REC, RES } from '../data/pipeline';
 import { useNow } from '../hooks/useNow';
 import { rel } from '../lib/format';
 import { useApp } from '../state/AppState';
@@ -24,10 +25,12 @@ function Proof() {
   }
   return (
     <>
+      <div className="mt-5"><LatencyBreakdown compact /></div>
       <div className="mt-5 flex items-center justify-between gap-3"><h3 className="text-lg font-medium tracking-tight">Every loop, with its receipts</h3><Button small onClick={copy}>Copy as Markdown</Button></div>
       {done.map((l) => (
         <Card key={l.id} className="mt-3.5">
-          <div className="flex items-center justify-between"><b className="text-lg font-medium">{l.name}</b><Pill icon="ok">{l.latency.toFixed(1)} s</Pill></div>
+          <div className="flex flex-wrap items-center justify-between gap-2"><b className="text-lg font-medium">{l.name}</b><Pill tone={l.kind === 'recovery' ? 'warn' : 'ok'}>{l.kind === 'recovery' ? `Recovery, ${l.latency.toFixed(1)} s` : `${l.latency.toFixed(1)} s`}</Pill></div>
+          {l.kind === 'recovery' && <p className="mt-2 text-[13px] text-mut">Excluded from the normal-loop median above. Recovery includes the pause and the admin unpause, not just the automated loop.</p>}
           <div className="mt-2">
             {proofRows(l.steps).map(([label, i]) => {
               const lane = l.steps[i].lane;
@@ -70,8 +73,8 @@ function Ops() {
         <Stat label="Last scheduled tick" source="On-chain" value={rel(tick, now)} sub="Runs every 60 seconds" extra={under ? <Pill tone="warn" icon="pause">Waiting</Pill> : <Pill icon="ok">On time</Pill>} />
         <Stat label="Subscriptions" source="On-chain" value={`${under ? 0 : 6} of 6 active`} sub="Vault, requester, registry on 2 chains" />
         <Stat label="Pending actions" source="On-chain" value={under ? 4 : 1} sub="Stuck: 0" extra={<Pill icon="ok">None stuck</Pill>} />
-        <Stat label="AI service" source="Status service" value="Running" sub="Last answer 3.4 s" extra={<Pill icon="ok">Reachable</Pill>} />
-        <Stat label="Recent AI latency" source="Status service" value={<>3.4 <span className="text-base text-mut">s median</span></>} sub="Last 7 answers" extra={<div className="w-24"><Sparkline data={[2.9, 3.4, 3.1, 3.8, 3.4, 3.2, 3.4]} /></div>} />
+        <Stat label="AI service" source="Status service" value="Running" sub="Last model call 12.0 s" extra={<Pill icon="ok">Reachable</Pill>} />
+        <Stat label="AI model call" source="latency.jsonl" value={<>12.0 <span className="text-base text-mut">s median</span></>} sub="Last 7 answers, normal loops" extra={<div className="w-24"><Sparkline data={[11.2, 9.3, 13.6, 11.1, 13.3, 11.0, 12.0]} /></div>} />
       </div>
     </>
   );
@@ -85,6 +88,7 @@ function Demo() {
     { t: 'Spike a pool rate', d: 'Pool A jumps to 9.10%. Ronin scores it, the AI reviews it, and the vault moves your money.', note: 'You go to Pipeline and watch it run.', b: 'Spike Pool A rate', f: () => { go('/app/pipeline'); runLoop(REB, 'AI-gated rebalance'); } },
     { t: 'Push utilisation to breaker level', d: 'Pool E utilisation goes to 94%. The breaker trips and vaults on the other chain pause.', note: 'You go to Pipeline and watch it run.', b: 'Trip the breaker', f: () => { setMode('paused'); go('/app/pipeline'); runLoop(BRK, 'Safety: breaker trips'); } },
     { t: 'Restore normal', d: 'Rates and utilisation return to normal and the paused vault resumes by itself.', note: 'You go to Pipeline and watch it run.', b: 'Restore normal', f: () => { setMode('rec'); go('/app/pipeline'); runLoop(RES, 'Safety: back to normal', () => setMode('ok')); } },
+    { t: 'Replay the retry that healed', d: 'The first callback hit a paused vault. An admin unpauses, then the RSC retries attempt 2 of 3 and the move completes.', note: 'You go to Pipeline. This is labelled recovery time, not speed.', b: 'Run retry demo', f: () => { go('/app/pipeline'); runLoop(REC, 'Retry that healed (verdict 44)', undefined, 'recovery'); } },
   ];
   return (
     <>

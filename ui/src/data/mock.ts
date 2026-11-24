@@ -7,6 +7,9 @@ export const mockVault = { balance: 1284.5, deposited: 1250, apy: 7.42, walletUs
 
 export interface FeedEvent { id: string; kind: IconName; text: string; ts: number; hash: string }
 export const mockFeed: FeedEvent[] = ([
+  ['ok', 'Recovery complete in 683 s: vault unpaused, retry healed', 88],
+  ['retry', 'Retrying (attempt 2 of 3): first callback hit a paused vault', 104],
+  ['pause', 'Verdict 44 callback reverted: the vault was paused, so no funds moved', 128],
   ['pay', 'Paid 12.00 USDC to 0x9d05\u2026a2e3', 40], ['rate', 'Pool B rate moved to 7.42%', 95],
   ['move', 'Moved your money to a better pool', 210], ['ai', 'AI reviewed the move, confidence 87%', 224],
   ['rate', 'Pool A rate moved to 4.10%', 460], ['ok', 'Rates are normal, vault checked', 900],
@@ -18,10 +21,10 @@ export const liveEventPool: Array<[IconName, string]> = [
 ];
 
 export type OrderState = 'active' | 'retrying' | 'skipped' | 'stuck' | 'completed' | 'cancelled';
-export interface Order { id: string; name: string; payee: string; amount: number; period: string; left: number; mode: 'yield' | 'yield-principal'; next: number; state: OrderState; why?: string }
+export interface Order { id: string; name: string; payee: string; amount: number; period: string; left: number; mode: 'yield' | 'yield-principal'; next: number; state: OrderState; why?: string; attempt?: number }
 export const mockOrders: Order[] = [
   { id: '1', name: 'Rent', payee: '0x4f2a9b7c3d1e8f6a05b2c4d97e1a3f80b6c2c91e', amount: 250, period: 'Every 7 days', left: 6, mode: 'yield', next: now + 2.17 * 864e5, state: 'active' },
-  { id: '2', name: 'Team stipend', payee: '0x9d05b1e3a77c4f20d8e6b9a1c35f7e2048d6a2e3', amount: 12, period: 'Every 2 min', left: 14, mode: 'yield-principal', next: now + 38e3, state: 'retrying' },
+  { id: '2', name: 'Team stipend', payee: '0x9d05b1e3a77c4f20d8e6b9a1c35f7e2048d6a2e3', amount: 12, period: 'Every 2 min', left: 14, mode: 'yield-principal', next: now + 38e3, state: 'retrying', attempt: 2 },
   { id: '3', name: 'Hosting', payee: '0x37fa6c0d12b94e58a7c3f1e0b6d92a45c8e1a2d1', amount: 600, period: 'Every 30 days', left: 3, mode: 'yield', next: now + 9 * 864e5, state: 'skipped', why: 'No yield yet' },
 ];
 
