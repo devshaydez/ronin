@@ -117,14 +117,18 @@ frozen by the breaker; both are documented in [`ai-service/PROOF.md`](ai-service
 
 ## Reproduce
 
-### 1. Dependencies (the `lib/` folder)
+### 1. Dependencies (the `lib/` submodules)
 
-`lib/` is not committed; install it with Foundry (this is the only setup step that needs network access):
+The dependencies are committed as pinned git submodules. Clone them with the repository:
 
 ```bash
-forge install foundry-rs/forge-std
-forge install OpenZeppelin/openzeppelin-contracts
-forge install Reactive-Network/reactive-lib-omni
+git clone --recurse-submodules <repository-url>
+```
+
+If you already cloned without them, initialise the pinned revisions in place:
+
+```bash
+git submodule update --init --recursive
 ```
 
 `remappings.txt` wires them up:

@@ -17,21 +17,13 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          submodules: recursive
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
 
       - name: Show Forge version
         run: forge --version
-
-      # lib/ is not committed; the dependencies are installed the same way a developer does it.
-      - name: Install dependencies
-        run: |
-          git config --global user.email "ci@example.com"
-          git config --global user.name "CI"
-          forge install foundry-rs/forge-std
-          forge install OpenZeppelin/openzeppelin-contracts
-          forge install Reactive-Network/reactive-lib-omni
 
       - name: Run Forge build
         run: forge build --sizes

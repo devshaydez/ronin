@@ -3,9 +3,6 @@
 .env.*
 !.env.example
 
-# Dependencies (installed with `forge install`, see README)
-lib/
-
 # Build artifacts
 out/
 cache/
