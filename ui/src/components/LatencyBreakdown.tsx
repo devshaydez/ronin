@@ -1,6 +1,8 @@
 import { Card } from './Card';
 import { Pill } from './Pill';
+import { SourceTag } from './SourceTag';
 import { LATENCY_PARTS_SECONDS, LATENCY_SAMPLE, LATENCY_STAGES, LATENCY_TOTAL_SECONDS, RECOVERY_CASE } from '../data/latency';
+import { PROOF_URL } from '../lib/mode';
 
 const fmt = (n: number) => n.toFixed(1);
 
@@ -12,7 +14,7 @@ export function LatencyBreakdown({ compact = false }: { compact?: boolean }) {
           <h3 className="text-lg font-medium tracking-tight">Where the {LATENCY_TOTAL_SECONDS} seconds go</h3>
           <p className="mt-1 text-[13px] text-mut">Median of {LATENCY_SAMPLE.loops} completed AI loops ({LATENCY_SAMPLE.window}).</p>
         </div>
-        <Pill tone="mute">On-chain receipts</Pill>
+        <SourceTag kind="proof" />
       </div>
 
       <div className="mt-5 flex h-3 overflow-hidden rounded-full bg-c2" aria-hidden>
@@ -40,7 +42,7 @@ export function LatencyBreakdown({ compact = false }: { compact?: boolean }) {
 
       <p className="mt-3 text-[13px] text-mut">
         Components are medians, so the rounded parts may not add exactly to the loop median. The {RECOVERY_CASE.seconds} s verdict-{RECOVERY_CASE.verdict} retry is a
-        <b className="text-ink"> recovery time</b>, not loop speed, and is excluded from these medians. It paused for a human review, then healed on attempt {RECOVERY_CASE.attempt} of {RECOVERY_CASE.maxAttempts}.
+        <b className="text-ink"> recovery time</b>, not loop speed, and is excluded from these medians. It paused for a human review, then healed on attempt {RECOVERY_CASE.attempt} of {RECOVERY_CASE.maxAttempts}. <a href={PROOF_URL} target="_blank" rel="noreferrer" className="text-acc hover:underline">See the receipts.</a>
       </p>
     </Card>
   );

@@ -7,8 +7,12 @@ import { Icon } from '../components/Icon';
 import { LatencyBreakdown } from '../components/LatencyBreakdown';
 import { Logo } from '../components/Logo';
 import { Segmented } from '../components/Segmented';
+import { SourceTag } from '../components/SourceTag';
+import { MEASURED_PROOF } from '../data/proof';
+import { useDeploymentStats } from '../hooks/useDeploymentStats';
 import { useNow } from '../hooks/useNow';
-import { countdown } from '../lib/format';
+import { countdown, usdc } from '../lib/format';
+import { GITHUB_URL, LIVE, PROOF_URL, explorerTx } from '../lib/mode';
 
 const css = (o: Record<string, string | number>) => o as CSSProperties;
 const EASE = [0.2, 0.8, 0.2, 1] as const;
@@ -29,11 +33,28 @@ function CountUp({ to, decimals = 0, suffix = '' }: { to: number; decimals?: num
 }
 
 // Sample values for the prototype. In the app each one is read from the chain, and an empty vault shows a real 0.
+// Demo-only marketing figures. Live mode replaces this curve with chain reads below.
 const STATS: Array<{ x: string; y: number; to: number; label: string; d?: number; s?: string }> = [
   { x: '6%', y: 230, to: 184220, label: 'Total deposited, USDC' }, { x: '27%', y: 182, to: 1286, label: 'Loops completed' },
   { x: '48%', y: 134, to: 22, s: 's', label: 'Median normal loop' }, { x: '69%', y: 86, to: 3172, label: 'Payouts made' },
   { x: '87%', y: 38, to: 2, label: 'Chains connected' },
 ];
+
+function LiveMetrics() {
+  const s = useDeploymentStats();
+  const value = (n: number | undefined) => n === undefined ? 'Reading…' : usdc(n);
+  return (
+    <div className="mx-auto max-w-[1180px] px-7 pt-8">
+      <div className="flex flex-wrap items-center gap-3"><SourceTag kind="live" source="vault.totalAssets()" /><span className="text-[13px] text-mut">Read from the deployed vaults, not from the marketing sample.</span></div>
+      <div className="mt-5 grid gap-5 border-t border-line pt-6 sm:grid-cols-3">
+        <div><small className="text-[13px] text-mut">Base Sepolia vault</small><b className="mt-1 block text-[clamp(28px,3.4vw,44px)] font-normal leading-none tracking-[-0.04em]">{value(s.base)} <span className="text-base text-mut">USDC</span></b></div>
+        <div><small className="text-[13px] text-mut">Unichain Sepolia vault</small><b className="mt-1 block text-[clamp(28px,3.4vw,44px)] font-normal leading-none tracking-[-0.04em]">{value(s.unichain)} <span className="text-base text-mut">USDC</span></b></div>
+        <div><small className="text-[13px] text-mut">Chains configured</small><b className="mt-1 block text-[clamp(28px,3.4vw,44px)] font-normal leading-none tracking-[-0.04em]">2</b></div>
+      </div>
+      {s.error && <p className="mt-3 text-[13px] text-red">Vault read failed. No fallback numbers are shown.</p>}
+    </div>
+  );
+}
 
 function Ill({ children }: { children: ReactNode }) {
   return <div className="mb-6 grid h-60 place-items-center overflow-hidden rounded-[20px]" style={{ background: 'radial-gradient(circle at 85% 0,#35c9b2 0,transparent 55%),radial-gradient(circle at 0 100%,#5b4be0 0,transparent 50%),linear-gradient(160deg,#071311,#0d3d37)' }}>{children}</div>;
@@ -43,17 +64,17 @@ const Tx = ({ children }: { children: ReactNode }) => <div className="a-tx absol
 
 const MINIS = [
   <Mu key="d"><div className="flex justify-between text-[#5d6a67]"><span>Deposit</span><i className="rounded-full bg-[#e3f7f2] px-2.5 py-0.5 font-medium not-italic text-[#0c7a6a]">Max</i></div>
-    <div className="my-2 text-[28px] tracking-tight">1,000.00 <small className="text-xs text-[#5d6a67]">USDC</small></div>
-    <div className="grid grid-cols-2 gap-1.5 font-medium"><u className="rounded-full bg-teal p-2 text-center text-[#04201c] no-underline">1 Approved</u><u className="a-fill rounded-full bg-[#eef2f1] p-2 text-center text-[#5d6a67] no-underline">2 Deposit</u></div><Tx>Confirmed 0x9c1e&hellip;4b07</Tx></Mu>,
-  <Mu key="f"><div className="flex justify-between pb-2"><span className="text-[#5d6a67]">Pool A, Base Sepolia</span><b>4.10%</b></div>
-    <div className="a-hl -mx-2 flex justify-between rounded-[10px] p-2"><span className="text-[#0c7a6a]">Pool B, Unichain Sepolia</span><b>7.42%</b></div>
+    <div className="my-2 text-[28px] tracking-tight">{LIVE ? '—' : '1,000.00'} <small className="text-xs text-[#5d6a67]">USDC</small></div>
+    <div className="grid grid-cols-2 gap-1.5 font-medium"><u className="rounded-full bg-teal p-2 text-center text-[#04201c] no-underline">1 Approved</u><u className="a-fill rounded-full bg-[#eef2f1] p-2 text-center text-[#5d6a67] no-underline">2 Deposit</u></div><Tx>{LIVE ? 'Illustrative receipt' : 'Confirmed 0x9c1e…4b07'}</Tx></Mu>,
+  <Mu key="f"><div className="flex justify-between pb-2"><span className="text-[#5d6a67]">Pool A, Base Sepolia</span><b>{LIVE ? '—' : '4.10%'}</b></div>
+    <div className="a-hl -mx-2 flex justify-between rounded-[10px] p-2"><span className="text-[#0c7a6a]">Pool B, Unichain Sepolia</span><b>{LIVE ? '—' : '7.42%'}</b></div>
     <svg viewBox="0 0 200 34" preserveAspectRatio="none" className="mt-1.5 block h-[34px] w-full"><path className="a-draw" pathLength={1} d="M0 28C30 28 40 22 70 20S110 24 130 14 170 6 200 3" fill="none" stroke="#19c3ac" strokeWidth="2" strokeLinecap="round" /></svg>
-    <div className="mt-2 flex justify-between text-[#5d6a67]"><span>Moved to Pool B</span><span>12 s ago</span></div><Tx>Rebalanced 0x9c1e&hellip;4b07</Tx></Mu>,
+    <div className="mt-2 flex justify-between text-[#5d6a67]"><span>Moved to Pool B</span><span>12 s ago</span></div><Tx>{LIVE ? 'Illustrative receipt' : 'Rebalanced 0x9c1e…4b07'}</Tx></Mu>,
   <Mu key="p"><div className="flex justify-between text-[#5d6a67]"><span>Rent, Amara Okafor</span><i className="rounded-full bg-[#e3f7f2] px-2.5 py-0.5 font-medium not-italic text-[#0c7a6a]">Paid</i></div>
-    <div className="my-2 text-[28px] tracking-tight">250.00 <small className="text-xs text-[#5d6a67]">USDC</small></div>
-    <div className="flex justify-between border-t border-[#e2e9e7] py-2"><span className="text-[#5d6a67]">From yield</span><b>250.00</b></div>
+    <div className="my-2 text-[28px] tracking-tight">{LIVE ? '—' : '250.00'} <small className="text-xs text-[#5d6a67]">USDC</small></div>
+    <div className="flex justify-between border-t border-[#e2e9e7] py-2"><span className="text-[#5d6a67]">From yield</span><b>{LIVE ? '—' : '250.00'}</b></div>
     <div className="flex justify-between border-t border-[#e2e9e7] py-2"><span className="text-[#5d6a67]">Next, in 7 days</span><b>0x4f2a&hellip;c91e</b></div>
-    <div className="h-[5px] overflow-hidden rounded-full bg-[#e2e9e7]"><div className="a-pb h-full w-[62%] rounded-full bg-[#19c3ac]" /></div><Tx>Sent 0x37fa&hellip;a2d1</Tx></Mu>,
+    <div className="h-[5px] overflow-hidden rounded-full bg-[#e2e9e7]"><div className="a-pb h-full w-[62%] rounded-full bg-[#19c3ac]" /></div><Tx>{LIVE ? 'Illustrative receipt' : 'Sent 0x37fa…a2d1'}</Tx></Mu>,
 ];
 
 const H2 = ({ children }: { children: ReactNode }) => <motion.h2 {...rise()} className="max-w-[15ch] text-[clamp(34px,5vw,64px)] font-medium leading-[1.04] tracking-[-0.035em]">{children}</motion.h2>;
@@ -75,7 +96,7 @@ export default function Landing() {
       <nav className={`fixed inset-x-0 top-0 z-20 border-b transition duration-500 ${scrolled ? 'border-white/10 bg-[#070b0a]/60 backdrop-blur-xl' : 'border-transparent'}`}>
         <div className="mx-auto flex h-[68px] max-w-[1180px] items-center justify-between px-7 text-[#eef4f2]">
           <a href="#top" className="flex items-center gap-2.5 text-xl font-semibold tracking-tight"><Logo size={26} />Ronin</a>
-          <div className="hidden gap-8 text-sm text-[#b8c7c3] md:flex">{[['How it works', '#how'], ['Standing orders', '#orders'], ['Safety', '#safety'], ['Proof', '#proof'], ['GitHub', '#']].map(([l, h]) => <a key={l} href={h} className="hover:text-white">{l}</a>)}</div>
+          <div className="hidden gap-8 text-sm text-[#b8c7c3] md:flex">{[['How it works', '#how'], ['Standing orders', '#orders'], ['Safety', '#safety'], ['Proof', '#proof']].map(([l, h]) => <a key={l} href={h} className="hover:text-white">{l}</a>)}<a href={GITHUB_URL} target="_blank" rel="noreferrer" className="hover:text-white">GitHub</a></div>
           <Link to="/app"><Button small>Launch app</Button></Link>
         </div>
       </nav>
@@ -100,6 +121,7 @@ export default function Landing() {
         </div>
       </header>
 
+      {LIVE ? <LiveMetrics /> : <>
       <div className="relative z-[3] -mt-[30px] hidden h-[390px] md:block">
         <div className="relative mx-auto h-full max-w-[1180px] px-7">
           <svg viewBox="0 0 1000 300" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" aria-hidden>
@@ -116,10 +138,12 @@ export default function Landing() {
       </div>
       <div className="mx-auto grid max-w-[1180px] grid-cols-2 gap-6 px-7 pt-2 md:hidden">{STATS.map((s) => <div key={s.label}><b className="block text-4xl font-normal tracking-[-0.04em]"><CountUp to={s.to} decimals={s.d ?? 0} suffix={s.s} /></b><small className="text-[13px] text-mut">{s.label}</small></div>)}</div>
       <p className="mx-auto max-w-[1180px] px-7 pt-4 text-[13px] text-mut">Testnet. Sample values in this prototype. In the app every figure is read from the chain, and an empty vault shows a real 0.</p>
+      </>}
 
       <section id="how" className="mx-auto max-w-[1180px] px-7 pt-[120px] max-md:pt-20">
         <H2>Fund it once. Then leave.</H2>
-        <div className="mt-12 grid gap-4 md:grid-cols-3">
+        <div className="mt-4"><SourceTag kind="sample" reason="illustrative product screens, not wallet data" /></div>
+        <div className="mt-8 grid gap-4 md:grid-cols-3">
           {[['Deposit', 'Put in USDC. Your money is placed in the best paying pool straight away.'], ['Farm', 'When another pool pays more and the checks pass, the vault moves your money there.'], ['Get paid', 'Set a payee, an amount and a schedule. Every payment goes out on time.']].map(([t, d], i) => (
             <motion.div key={t} {...rise(i)} className="group"><Card className="min-h-[440px]"><Ill>{MINIS[i]}</Ill><h3 className="mb-2.5 text-[28px] font-medium tracking-tight">{t}</h3><p className="text-[15px] text-mut">{d}</p></Card></motion.div>
           ))}
@@ -130,16 +154,17 @@ export default function Landing() {
         <motion.div {...rise()}>
           <h2 className="max-w-[15ch] text-[clamp(34px,5vw,64px)] font-medium leading-[1.04] tracking-[-0.035em]">Choose where each payout comes from.</h2>
           <div className="mt-8"><Segmented id="landsrc" value={src} onChange={setSrc} options={[{ value: 'yield', label: 'Yield only' }, { value: 'yield-principal', label: 'Yield, then principal' }]} /></div>
+          <div className="mt-3"><SourceTag kind="sample" reason="illustrative order; live plan reads are in the app" /></div>
           <p className="mt-4 min-h-[50px] max-w-[400px] text-mut">{src === 'yield' ? 'Your deposit is never touched. The payment is skipped if there is no yield yet.' : 'Always pays, using your deposit if yield runs short.'}</p>
         </motion.div>
         <motion.div {...rise(2)}><Card className="!p-7 shadow-[0_40px_80px_-40px_rgb(8_60_52/.35)]">
           <div className="flex items-center justify-between"><b className="font-medium">Rent, Amara Okafor</b><span className="inline-flex items-center gap-1.5 rounded-full bg-teal/15 px-3 py-1 text-[13px] font-medium text-acc"><Icon name="ok" size={14} />Active</span></div>
-          <div className="mb-1 mt-5 text-[56px] leading-none tracking-[-0.045em]">250.00 <span className="text-[22px] text-mut">USDC</span></div>
-          <div className="text-mut">Every 7 days, 6 payments left</div>
+          <div className="mb-1 mt-5 text-[56px] leading-none tracking-[-0.045em]">{LIVE ? '—' : '250.00'} <span className="text-[22px] text-mut">USDC</span></div>
+          <div className="text-mut">Every 7 days, {LIVE ? 'payment count read in the app' : '6 payments left'}</div>
           <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-line"><motion.div className="h-full origin-left rounded-full bg-teal" animate={{ scaleX: src === 'yield' ? 0.5 : 0.34 }} initial={{ scaleX: 0.5 }} transition={{ duration: 1, ease: [0.3, 1, 0.4, 1] }} /></div>
           <div className="mt-5 grid grid-cols-2 gap-3.5 border-t border-line pt-5 text-sm">
             <div><span className="block text-[13px] text-mut">Payee</span>0x4f2a&hellip;c91e</div><div><span className="block text-[13px] text-mut">Next payment</span>{countdown(due, now)}</div>
-            <div><span className="block text-[13px] text-mut">Source</span>{src === 'yield' ? 'Yield only' : 'Yield, then principal'}</div><div><span className="block text-[13px] text-mut">Available yield now</span>312.48 USDC</div>
+            <div><span className="block text-[13px] text-mut">Source</span>{src === 'yield' ? 'Yield only' : 'Yield, then principal'}</div><div><span className="block text-[13px] text-mut">Available yield now</span>{LIVE ? 'Read in the app' : '312.48 USDC'}</div>
           </div></Card></motion.div>
       </section>
 
@@ -164,13 +189,15 @@ export default function Landing() {
 
       <section id="proof" className="mx-auto max-w-[1180px] px-7 pt-[120px] max-md:pt-20">
         <H2>Every step has a receipt.</H2>
-        <motion.p {...rise()} className="mt-4 max-w-[460px] text-mut">The latest automated loops, with links to the transactions on each chain.</motion.p>
-        <div className="mt-11 grid gap-2.5">
-          {[['Rebalance', 'Base Sepolia', '12 s ago', '0x9c1e\u20264b07'], ['Payout, 250.00 USDC', 'Base Sepolia', '4 min ago', '0x37fa\u2026a2d1'], ['Safety resume', 'Unichain Sepolia', '21 min ago', '0xd05b\u202677e3']].map(([a, b, c, d], i) => (
-            <motion.div key={a} {...rise(i)} className="grid grid-cols-2 items-center gap-5 rounded-[20px] border border-line bg-card px-6 py-5 text-sm transition duration-300 hover:scale-[1.012] md:grid-cols-[1.2fr_2fr_1.4fr_auto]">
-              <b className="font-medium">{a}</b><div><em className="block text-[13px] not-italic text-mut">Transaction</em>{d}</div><div><em className="block text-[13px] not-italic text-mut">{b}</em>{c}</div><a href="#" className="whitespace-nowrap font-medium text-acc">View on explorer</a></motion.div>
+        <motion.p {...rise()} className="mt-4 max-w-[460px] text-mut">Receipts from the 2026-11-23 Phase B2 run on this deployment. These are not live refetches; the full evidence report is linked below.</motion.p>
+        <div className="mt-4"><SourceTag kind="proof" /></div>
+        <div className="mt-6 grid gap-2.5">
+          {MEASURED_PROOF.slice(0, 3).map((r, i) => (
+            <motion.div key={r.hash} {...rise(i)} className="grid grid-cols-2 items-center gap-5 rounded-[20px] border border-line bg-card px-6 py-5 text-sm transition duration-300 hover:scale-[1.012] md:grid-cols-[1.2fr_2fr_1.4fr_auto]">
+              <b className="font-medium">{r.label}</b><div><em className="block text-[13px] not-italic text-mut">Transaction</em>{r.hash.slice(0, 6)}…{r.hash.slice(-4)}</div><div><em className="block text-[13px] not-italic text-mut">{r.chainName}</em>2026-11-23</div><a href={explorerTx(r.chain, r.hash)} target="_blank" rel="noreferrer" className="whitespace-nowrap font-medium text-acc">View on explorer</a></motion.div>
           ))}
         </div>
+        <p className="mt-4 text-[13px] text-mut"><a href={PROOF_URL} target="_blank" rel="noreferrer" className="font-medium text-acc hover:underline">Open ai-service/PROOF.md for every receipt and the 683 s recovery row.</a></p>
         <motion.div {...rise()} className="mt-4"><LatencyBreakdown /></motion.div>
       </section>
 
@@ -194,7 +221,7 @@ export default function Landing() {
 
       <footer className="mt-[120px] border-t border-line py-10 pb-[60px] text-sm text-mut">
         <div className="mx-auto flex max-w-[1180px] flex-wrap justify-between gap-5 px-7"><span className="flex items-center gap-2 font-semibold text-ink"><Logo size={22} />Ronin</span>
-          <div className="flex gap-6">{['GitHub', 'Hackathon page', 'Docs', 'Contact'].map((l) => <a key={l} href="#" className="hover:text-ink">{l}</a>)}</div></div>
+          <div className="flex flex-wrap gap-6"><a href={GITHUB_URL} target="_blank" rel="noreferrer" className="hover:text-ink">GitHub</a><a href={`${GITHUB_URL}#readme`} target="_blank" rel="noreferrer" className="hover:text-ink">Docs</a><a href={PROOF_URL} target="_blank" rel="noreferrer" className="hover:text-ink">Proof</a><Link to="/app/reviewer" className="hover:text-ink">Reviewer</Link></div></div>
       </footer>
     </div>
   );

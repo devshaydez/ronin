@@ -4,8 +4,10 @@ import { Button } from './Button';
 import { Card } from './Card';
 import { Icon } from './Icon';
 import { Segmented } from './Segmented';
+import { SourceTag } from './SourceTag';
 import { makeHash } from '../data/mock';
 import { usdc } from '../lib/format';
+import { LIVE } from '../lib/mode';
 import { useApp } from '../state/AppState';
 
 type Stage = 'idle' | 'pending' | 'approved' | 'done' | 'failed';
@@ -45,6 +47,7 @@ export function DepositCard({ balance }: { balance: number }) {
   }
 
   function submit() {
+    if (LIVE) return toast('On-chain deposit and withdraw writes are not wired in this UI build');
     if (!w.connected) return w.connect();
     if (mode === 'wrong') { setMode('ok'); return toast('Switched to Base Sepolia'); }
     const v = parseFloat(amount);
@@ -62,16 +65,16 @@ export function DepositCard({ balance }: { balance: number }) {
     }, 1900);
   }
 
-  const label = !w.connected ? 'Connect wallet' : mode === 'wrong' ? 'Switch network' : withdraw ? 'Withdraw' : s.step === 0 ? 'Approve USDC' : 'Deposit';
+  const label = LIVE ? 'On-chain writes not wired' : !w.connected ? 'Connect wallet' : mode === 'wrong' ? 'Switch network' : withdraw ? 'Withdraw' : s.step === 0 ? 'Approve USDC' : 'Deposit';
   return (
     <Card>
-      <Segmented id="dtab" value={tab} onChange={(t) => { setTab(t); dispatch({ t: 'reset' }); }} options={[{ value: 'deposit', label: 'Deposit' }, { value: 'withdraw', label: 'Withdraw' }]} />
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><Segmented id="dtab" value={tab} onChange={(t) => { setTab(t); dispatch({ t: 'reset' }); }} options={[{ value: 'deposit', label: 'Deposit' }, { value: 'withdraw', label: 'Withdraw' }]} /><SourceTag kind="sample" reason="deposit/withdraw is a local simulation; no transaction is signed" /></div>
       <div className={`my-4 flex items-center gap-2.5 rounded-2xl border bg-c2 px-4 py-3 ${error ? 'border-red' : 'border-line'}`}>
         <input aria-label="Amount" inputMode="decimal" value={amount} onChange={(e) => { setAmount(e.target.value); setError(''); }} className="min-w-0 flex-1 bg-transparent text-base tracking-tight outline-none sm:text-[28px]" />
         <span className="text-mut">USDC</span>
-        <button onClick={() => setAmount(max.toFixed(2))} className="rounded-full bg-teal/15 px-3 py-1 text-[13px] text-acc">Max</button>
+        <button disabled={LIVE} onClick={() => setAmount(max.toFixed(2))} className="rounded-full bg-teal/15 px-3 py-1 text-[13px] text-acc disabled:opacity-40">Max</button>
       </div>
-      <div className="text-[13px] text-mut">{withdraw ? 'Vault' : 'Wallet'}: <span title={max.toFixed(6)}>{usdc(max)}</span> USDC</div>
+      <div className="text-[13px] text-mut">{withdraw ? 'Vault' : 'Wallet'}: <span title={LIVE ? 'Not connected' : max.toFixed(6)}>{LIVE && !w.connected ? '—' : usdc(max)}</span> USDC</div>
       {error && <div className="mt-1 text-[13px] text-red">{error}</div>}
       {!withdraw && (
         <div className="my-3 grid grid-cols-2 gap-2 text-[13px]">
@@ -81,9 +84,9 @@ export function DepositCard({ balance }: { balance: number }) {
       )}
       {paused && <p className="my-2 text-[13px] text-mut">Deposits are off while the vault is paused. Withdrawals still work.</p>}
       <div className="my-2 flex min-h-[26px] flex-wrap items-center gap-2.5 text-sm" aria-live="polite">
-        {s.stage === 'pending' && <><span className="spinner" />Waiting for confirmation <a href="#" className="text-acc">{s.hash}</a></>}
+        {s.stage === 'pending' && <><span className="spinner" />Waiting for confirmation <span className="text-mut" title="Demo placeholder, not an on-chain transaction">{s.hash}</span></>}
         {s.stage === 'approved' && <><span className="text-acc"><Icon name="ok" size={16} /></span>Approved. Now deposit.</>}
-        {s.stage === 'done' && <><span className="text-acc"><Icon name="ok" size={16} /></span>Confirmed <a href="#" className="text-acc">{s.hash}</a></>}
+        {s.stage === 'done' && <><span className="text-acc"><Icon name="ok" size={16} /></span>Confirmed <span className="text-mut" title="Demo placeholder, not an on-chain transaction">{s.hash}</span></>}
         {s.stage === 'failed' && <><span className="text-red"><Icon name="x" size={16} /></span>Transaction failed. You rejected the request, so nothing was spent. <button className="text-acc underline" onClick={submit}>Try again</button></>}
       </div>
       <Button className="mt-1 w-full" disabled={paused || s.stage === 'pending'} onClick={submit}>{label}</Button>

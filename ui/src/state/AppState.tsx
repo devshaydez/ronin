@@ -5,6 +5,7 @@ import type { StepStatus } from '../components/StepRow';
 import { liveEventPool, makeHash, mockFeed, mockOrders, mockVault, type FeedEvent, type Order } from '../data/mock';
 import { PAY, REB, REC, SAF, type StepDef } from '../data/pipeline';
 import { LATENCY_TOTAL_SECONDS, RECOVERY_CASE } from '../data/latency';
+import { LIVE } from '../lib/mode';
 
 export type Mode = 'ok' | 'paused' | 'exit' | 'wrong' | 'nousdc' | 'rec';
 export interface Loop { id: string; name: string; steps: StepDef[]; status: StepStatus[]; ts: number[]; hashes: string[]; latency: number; running: boolean; startedAt: number; aiStart?: number; kind: 'normal' | 'recovery' }
@@ -36,11 +37,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [balance, setBalance] = useState(mockVault.balance);
   const [walletUsdc, setWallet] = useState(mockVault.walletUsdc);
   const [orders, setOrders] = useState<Order[]>(mockOrders);
-  const [feed, setFeed] = useState<FeedEvent[]>(mockFeed);
-  const [loops, setLoops] = useState<Loop[]>(() => [seed('AI-gated rebalance', REB, LATENCY_TOTAL_SECONDS, 190), seed('Retry that healed (verdict 44)', REC, RECOVERY_CASE.seconds, 640, 'recovery'), seed('Standing order payout', PAY, 6.8, 1100), seed('Safety resume', SAF, 9.1, 2500)]);
+  const [feed, setFeed] = useState<FeedEvent[]>(LIVE ? [] : mockFeed);
+  const [loops, setLoops] = useState<Loop[]>(() => LIVE ? [] : [seed('AI-gated rebalance', REB, LATENCY_TOTAL_SECONDS, 190), seed('Retry that healed (verdict 44)', REC, RECOVERY_CASE.seconds, 640, 'recovery'), seed('Standing order payout', PAY, 6.8, 1100), seed('Safety resume', SAF, 9.1, 2500)]);
   const [selected, setSelected] = useState('');
   const [running, setRunning] = useState(false);
-  const [demoFlag, setDemoFlag] = useState(true);
+  const [demoFlag, setDemoFlag] = useState(!LIVE);
   const [debt, setDebt] = useState(0);
   const [demoConnected, setDemoConnected] = useState(true);
   const [network, setNetwork] = useState(84532);
@@ -51,12 +52,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addEvent = useCallback((kind: IconName, text: string) => setFeed((f) => [{ id: crypto.randomUUID(), kind, text, ts: Date.now(), hash: makeHash() }, ...f].slice(0, 40)), []);
 
   useEffect(() => {
-    if (mode === 'paused') return;
+    // Seeded events are demo-only. A live build starts empty until an event indexer is wired.
+    if (LIVE || mode === 'paused') return;
     const t = setInterval(() => { const [k, x] = liveEventPool[Math.floor(Math.random() * liveEventPool.length)]; addEvent(k, x); }, 8000);
     return () => clearInterval(t);
   }, [mode, addEvent]);
 
   const runLoop = useCallback((steps: StepDef[], name: string, fin?: () => void, kind: Loop['kind'] = 'normal') => {
+    if (LIVE) return;
     const id = crypto.randomUUID(); const t0 = Date.now(); let i = 0;
     const patch = (fn: (l: Loop) => Loop) => setLoops((ls) => ls.map((l) => (l.id === id ? fn(l) : l)));
     setLoops((ls) => [{ id, name, steps, status: steps.map(() => 'waiting'), ts: [], hashes: steps.map(makeHash), latency: 0, running: true, startedAt: t0, kind }, ...ls]);

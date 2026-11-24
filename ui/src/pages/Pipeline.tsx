@@ -1,17 +1,28 @@
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Pill } from '../components/Pill';
+import { SourceTag } from '../components/SourceTag';
 import { StepRow } from '../components/StepRow';
 import { indent, LANES, REB, REC } from '../data/pipeline';
 import { RECOVERY_CASE } from '../data/latency';
 import { useNow } from '../hooks/useNow';
 import { rel } from '../lib/format';
+import { LIVE, PROOF_URL } from '../lib/mode';
 import { SPEED, useApp } from '../state/AppState';
 
 export default function Pipeline() {
   const { loops, selected, setSelected, running, runLoop } = useApp();
   const now = useNow(100);
   const L = loops.find((l) => l.id === selected) ?? loops[0];
+  if (!L) {
+    return (
+      <main className="mx-auto max-w-[1180px] px-4 pb-8 pt-7 sm:px-6">
+        <h1 className="text-[28px] font-medium tracking-[-0.035em] sm:text-[34px]">Pipeline</h1>
+        <p className="mt-1.5 max-w-[620px] text-mut">Live mode is on. This build has no event indexer for loop rows, so no pipeline run is presented as live.</p>
+        <Card className="mt-4"><div className="flex flex-wrap items-center gap-3"><Pill tone="mute">Not indexed</Pill><SourceTag kind="proof" /></div><p className="mt-3 max-w-[680px] text-[15px]">The demo replay and its seeded retry are disabled in live mode. The measured deployment receipts are in <a href={PROOF_URL} target="_blank" rel="noreferrer" className="text-acc hover:underline">ai-service/PROOF.md</a>.</p></Card>
+      </main>
+    );
+  }
   const recovery = L.kind === 'recovery';
   const latency = recovery ? RECOVERY_CASE.seconds : L.running ? (now - L.startedAt) / 1000 : L.latency;
   const isAi = L.steps === REB;
@@ -19,13 +30,13 @@ export default function Pipeline() {
   return (
     <main className="mx-auto max-w-[1180px] px-4 pb-8 pt-7 sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-[28px] font-medium tracking-[-0.035em] sm:text-[34px]">Live pipeline</h1>
-        <div className="flex flex-wrap gap-2">
+        <h1 className="text-[28px] font-medium tracking-[-0.035em] sm:text-[34px]">{LIVE ? 'Pipeline' : 'Demo pipeline'}</h1>
+        {!LIVE && <div className="flex flex-wrap gap-2">
           <Button variant="outline" disabled={running} onClick={() => runLoop(REC, 'Retry that healed (verdict 44)', undefined, 'recovery')}>Run retry demo</Button>
           <Button disabled={running} onClick={() => runLoop(REB, 'AI-gated rebalance')}>Run a live loop</Button>
-        </div>
+        </div>}
       </div>
-      <p className="mt-1.5 max-w-[620px] text-mut">One automated loop, step by step. Each step runs on its own chain and has its own transaction.</p>
+      <div className="mt-1.5 flex flex-wrap items-center gap-3"><p className="max-w-[620px] text-mut">{LIVE ? 'Live loop rows are not indexed in this build.' : 'A seeded replay, not on-chain receipts. Each step names the chain it would run on.'}</p>{!LIVE && <SourceTag kind="sample" reason="demo replay; hashes are not transactions" />}</div>
       <div className="mt-5 grid items-start gap-4 md:grid-cols-[300px_1fr]">
         <div className="grid gap-2">
           {loops.map((l) => (

@@ -9,6 +9,7 @@ import AiDecisions from './pages/AiDecisions';
 import Pools from './pages/Pools';
 import Safety from './pages/Safety';
 import Reviewer from './pages/Reviewer';
+import { LIVE } from './lib/mode';
 
 export default function App() {
   const onLanding = useLocation().pathname === '/';
@@ -25,7 +26,7 @@ export default function App() {
         <Route path="/app/safety" element={<Safety />} />
         <Route path="/app/reviewer" element={<Reviewer />} />
       </Routes>
-      {!onLanding && <StatesBar />}
+      {!onLanding && !LIVE && <StatesBar />}
     </>
   );
 }
