@@ -2,31 +2,57 @@
 
 Live testnet deployment of Ronin, including standing orders (plans) and callback ack/retry.
 Every transaction below has receipt status `1` unless noted.
-Deployed **2026-11-19** with Foundry 1.9.0 (solc 0.8.29, `evm_version = cancun`, `via_ir = true`).
+Deployed **2026-11-22** with Foundry 1.9.0 (solc 0.8.29, `evm_version = cancun`, `via_ir = true`).
 
 ## CURRENT — 2026-11-22 deployment (Phase B2 evidence)
 
 This is the live build. The 2026-11-20 deployment below is retained as **PREVIOUS**.
 
-| Contract | Chain | Address |
-|---|---|---|
-| `RoninReactive` | Lasna | `0x69107baF143C38722744a09e3f27c3c076469d5f` |
-| `RoninVault` | Base Sepolia | `0xCD50707FED3Ef829b0965D6DDCF0Dab56e5cce66` |
-| `DecisionRequester` | Base Sepolia | `0xd3f0BD4a232AD8061DD119564AF64D8b6f340eBb` |
-| `AIVerdictRegistry` | Base Sepolia | `0x1Ba4da5288751378c1813a256885c7e376592D34` |
-| `AaveV3Adapter` | Base Sepolia | `0x6cE1f923B595Ade17FaF04fdE6700766DC7bF568` |
-| `MockLendingPool` (stress) | Base Sepolia | `0x74815327b2650467eba2aF4D37e6D2Bd9467DbE0` |
-| USDC asset | Base Sepolia | `0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f` |
-| `RoninVault` | Unichain Sepolia | `0xce75a97917c8fd52eA30684F0988FAe4485D64cD` |
-| `DecisionRequester` | Unichain Sepolia | `0xFcC603B48675Ae138890BF4A155A13A378DAA5B5` |
-| `AIVerdictRegistry` | Unichain Sepolia | `0xA97D4F33F029928B8c0B54Ee47129Aa39F51007f` |
-| `MockUSDC` | Unichain Sepolia | `0x0Bd0E5FDa3e21a23D0ef9B3267d1541c2AbE58F6` |
-| `MockLendingPool` (16 pools, A–P) | Unichain Sepolia | see `vault.pools(i)`; target U `0x79387679Eb59e5692b3FC566Dcc3fE484eBDB9F4` |
-| Callback proxy | Base Sepolia | `0x476F44b11F5C942c58f4c8E3d0300E5710743585` |
-| Callback proxy | Unichain Sepolia | `0x775c9B990ADe401060B78D0e98684eEf8d2466C1` |
+The core transactions are recovered from `broadcast/`; the 16 Unichain pools and the external contracts are
+recovered from chain history. Address links open the address page; the deployment transaction hash links to the
+receipt on that chain.
 
-> The deployment transactions for this specific build are not reproduced here; the address map above is from the
-> live contracts. Every Phase B2 action hash is listed below and in `ai-service/PROOF.md`.
+| Contract | Chain | Address | Deployment tx | Block |
+|---|---|---|---|---:|
+| `RoninReactive` | Lasna | [`0x6910…9d5f`](https://lasna.reactscan.net/address/0x69107baF143C38722744a09e3f27c3c076469d5f) | [`0xb7c1…3fa0`](https://lasna.reactscan.net/tx/0xb7c115b4f20044dfbe10395ed4f45adf384e7b543a55389c8792fd15f0373fa0) | 8,979,790 |
+| `RoninVault` | Base Sepolia | [`0xCD50…ce66`](https://sepolia.basescan.org/address/0xCD50707FED3Ef829b0965D6DDCF0Dab56e5cce66) | [`0x58ae…b1f0`](https://sepolia.basescan.org/tx/0x58ae6e7f9926b7b498ac58a88df48f7b6ce988db184902572cd459020800b1f0) | 62,173,781 |
+| `DecisionRequester` | Base Sepolia | [`0xd3f0…0eBb`](https://sepolia.basescan.org/address/0xd3f0BD4a232AD8061DD119564AF64D8b6f340eBb) | [`0x373c…d22a1`](https://sepolia.basescan.org/tx/0x373c632e718ecb69fb81464860feb0638c1cac90002eb0e00b7b34e184cd22a1) | 62,173,780 |
+| `AIVerdictRegistry` | Base Sepolia | [`0x1Ba4…2D34`](https://sepolia.basescan.org/address/0x1Ba4da5288751378c1813a256885c7e376592D34) | [`0xbfac…df15`](https://sepolia.basescan.org/tx/0xbfac60d5e373dbdbeb29d39ca984bb9d84f7b8af17bd9e65a67b76f94ff9df15) | 62,173,780 |
+| `AaveV3Adapter` | Base Sepolia | [`0x6cE1…F568`](https://sepolia.basescan.org/address/0x6cE1f923B595Ade17FaF04fdE6700766DC7bF568) | [`0x3e2d…803d`](https://sepolia.basescan.org/tx/0x3e2df60a2ab0e540d144c0868b44b0512596694f4cc2f7bfe340a310a5f7803d) | 62,173,780 |
+| `MockLendingPool` (stress) | Base Sepolia | [`0x7481…DbE0`](https://sepolia.basescan.org/address/0x74815327b2650467eba2aF4D37e6D2Bd9467DbE0) | [`0xbd25…3e72`](https://sepolia.basescan.org/tx/0xbd25d731bddc58e4c5d0c456c3764cf77e32a43830ce690662a9fd19e05c3e72) | 62,173,780 |
+| USDC asset (external) | Base Sepolia | [`0xba50…4D5f`](https://sepolia.basescan.org/address/0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f) | [`0xcca4…d1ec`](https://sepolia.basescan.org/tx/0xcca4965da32a86ab3989c4dfa5de09113ee849ce7638a5b50f0c8776f51fd1ec) | 18,301,528 |
+| Aave V3 Pool (external) | Base Sepolia | [`0x8bAB…aE27`](https://sepolia.basescan.org/address/0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27) | [`0xd0b1…5899`](https://sepolia.basescan.org/tx/0xd0b10976a3182e24b01c94f303b1668849b07e41a80c1fbdf50aa2b19b425899) | 18,385,222 |
+| Callback proxy (external) | Base Sepolia | [`0x476F…3585`](https://sepolia.basescan.org/address/0x476F44b11F5C942c58f4c8E3d0300E5710743585) | [`0x0370…fb11`](https://sepolia.basescan.org/tx/0x037039b883813aeff2cdd163379051e7ac0d684085e3ad993121dd2306c1fb11) | 47,856,458 |
+| `RoninVault` | Unichain Sepolia | [`0xce75…64cD`](https://sepolia.uniscan.xyz/address/0xce75a97917c8fd52eA30684F0988FAe4485D64cD) | [`0xb294…21dd`](https://sepolia.uniscan.xyz/tx/0xb29486aeeaca545020592abe0bb878fc9c3b9c5837670c5ad672f9b38ba721dd) | 68,504,321 |
+| `DecisionRequester` | Unichain Sepolia | [`0xFcC6…A5B5`](https://sepolia.uniscan.xyz/address/0xFcC603B48675Ae138890BF4A155A13A378DAA5B5) | [`0x3bef…b6be`](https://sepolia.uniscan.xyz/tx/0x3bef12912682f5be83c8326371875da21f413fe0d39ec1181a2070d41f63b6be) | 68,504,321 |
+| `AIVerdictRegistry` | Unichain Sepolia | [`0xA97D…007f`](https://sepolia.uniscan.xyz/address/0xA97D4F33F029928B8c0B54Ee47129Aa39F51007f) | [`0x6f78…e4f5`](https://sepolia.uniscan.xyz/tx/0x6f787a3c853fee204e423994aa9898a78625074d253905206f4c9dbce689e4f5) | 68,504,321 |
+| `MockUSDC` | Unichain Sepolia | [`0x0Bd0…58F6`](https://sepolia.uniscan.xyz/address/0x0Bd0E5FDa3e21a23D0ef9B3267d1541c2AbE58F6) | [`0xc867…1f3e`](https://sepolia.uniscan.xyz/tx/0xc867a59f2f9bb8c6901fd13716d4e7c4031dd72687d030b0b0cb069221571f3e) | 68,504,320 |
+| Callback proxy (external) | Unichain Sepolia | [`0x775c…66C1`](https://sepolia.uniscan.xyz/address/0x775c9B990ADe401060B78D0e98684eEf8d2466C1) | [`0xa2d7…c8b0`](https://sepolia.uniscan.xyz/tx/0xa2d7f55dd45a234f725ae16a5026a7117495bc5c149a26d794f48f6e4e35c8b0) | 64,628,832 |
+
+### Unichain mock pools (all 16)
+
+These are the `vault.pools(i)` entries in order. Pool U is the current target.
+
+| Pool | Address | Deployment tx | Block |
+|---|---|---|---:|
+| A | [`0xCfc5…ec80`](https://sepolia.uniscan.xyz/address/0xCfc59C513752A10Cd024B4B655B829D7e7cCec80) | [`0x31c7…5e46`](https://sepolia.uniscan.xyz/tx/0x31c7f85dce82378533117f834da03ee12669c0353f3757e6a8ffee7894b85e46) | 68,504,320 |
+| B | [`0x6950…4C8e`](https://sepolia.uniscan.xyz/address/0x6950F7B22bF1f7Ba720e6e92BE822407f16b4C8e) | [`0xcca0…c748`](https://sepolia.uniscan.xyz/tx/0xcca0338e2546301e487039583402b94621a47247fb4d09f4d2a72c7b6abfc748) | 68,504,321 |
+| C | [`0xA245…3885`](https://sepolia.uniscan.xyz/address/0xA245F575e5D8FD814f89e22bd364713ba44D3885) | [`0xf2ac…9017`](https://sepolia.uniscan.xyz/tx/0xf2ac9a7ffeb93c5014378128ea295989381da463cdc74bf6a63777be24d49017) | 68,506,787 |
+| D | [`0x8486…D91f`](https://sepolia.uniscan.xyz/address/0x8486013323497789D4Dcf6566042C6f58185D91f) | [`0xdaec…027e`](https://sepolia.uniscan.xyz/tx/0xdaec55c8dea23ffc4b6d2819c049d93b23ca4b80525fe10ab0ea345e322b027e) | 68,507,196 |
+| E | [`0x4A22…7e73`](https://sepolia.uniscan.xyz/address/0x4A22E2A4e6fEFecFF1166D98Ce931Dabe9647e73) | [`0xda29…ae94`](https://sepolia.uniscan.xyz/tx/0xda29b2bcdfb0ffa66bc2a206cb7be882ccb321ab0036bcb53969003d4fecae94) | 68,507,254 |
+| F | [`0x3228…779d`](https://sepolia.uniscan.xyz/address/0x3228717FadC69DB84ab61f7E8711BF8714a9779d) | [`0x922f…a2a3`](https://sepolia.uniscan.xyz/tx/0x922f59416ff44ba8c3c50eb4c505271f9cb940aa2fcd8789af394d3ff866a2a3) | 68,507,310 |
+| G | [`0x3E50…7829`](https://sepolia.uniscan.xyz/address/0x3E50C8F0cf0c4A49A949296f79C3Eb480Dd27829) | [`0x43ad…5724`](https://sepolia.uniscan.xyz/tx/0x43ad200c4a342d8a024509515f88473a35af70e4d76710d590516051475e5724) | 68,519,010 |
+| I | [`0x1e5D…3Eba`](https://sepolia.uniscan.xyz/address/0x1e5D6F9b87815eE6025d4f98248F3B09bB353Eba) | [`0x4ac8…d609`](https://sepolia.uniscan.xyz/tx/0x4ac8aeb23b680118314879711068ad5368552b01418d632b0fbecc03121ad609) | 68,519,178 |
+| J | [`0xd21f…a335`](https://sepolia.uniscan.xyz/address/0xd21fF300daF7905cAcE77D8152F495A6df55a335) | [`0xc72c…6e4c`](https://sepolia.uniscan.xyz/tx/0xc72c9712a021d50e1202733fdc170c2d458696b1050ad70f6f8f0f2afe386e4c) | 68,519,216 |
+| N | [`0x54FB…712B`](https://sepolia.uniscan.xyz/address/0x54FBd6F071dB95736bE7508bE2F6b888Dc32712B) | [`0xd3e4…806b`](https://sepolia.uniscan.xyz/tx/0xd3e4258c81096f4ca5dddcca03ff2ef15b61b0a80073a03b7e10d72bf06d806b) | 68,519,736 |
+| O | [`0x73A4…CE2C`](https://sepolia.uniscan.xyz/address/0x73A4B61a23749C88765BdBf0843248BE5337CE2C) | [`0x3925…0207`](https://sepolia.uniscan.xyz/tx/0x39259bd289cb998c1cfe8993e86d017e7d5760cddf55c4ee1e9740209d2d0207) | 68,520,030 |
+| Q | [`0xF717…a6e3`](https://sepolia.uniscan.xyz/address/0xF717b4980A3f81f01C680D27E29998Fc8767a6e3) | [`0x80a8…edb9`](https://sepolia.uniscan.xyz/tx/0x80a83dba85f2ad7bba42126366d75f2d4cd0d1b820f0fff4d9e825488f2fedb9) | 68,520,261 |
+| R | [`0x1aB4…971F`](https://sepolia.uniscan.xyz/address/0x1aB4Fe4dc3c9a96fD18FAD2561215941e0F6971F) | [`0x72d0…0565`](https://sepolia.uniscan.xyz/tx/0x72d0c8b83f65689ddc61a26b7ba1f9ed3d3a689259576ee6834d093b78b30565) | 68,520,317 |
+| S | [`0x63cA…a8F1`](https://sepolia.uniscan.xyz/address/0x63cA218b69a616b9c7802fe25334023900fda8F1) | [`0x9965…f6fb`](https://sepolia.uniscan.xyz/tx/0x9965ce080b3688bba3354aebdc3544c5fb420ef20b1733fcf3bc5dfa2177f6fb) | 68,520,376 |
+| T | [`0xA935…bb4B`](https://sepolia.uniscan.xyz/address/0xA9355CF00b993D8B2ae69f03EeF2f05845C6bb4B) | [`0xcf10…1b54`](https://sepolia.uniscan.xyz/tx/0xcf108170f5407146a7601bd283c05421952ff92f449104f4fde61fe316491b54) | 68,520,541 |
+| U | [`0x7938…B9F4`](https://sepolia.uniscan.xyz/address/0x79387679Eb59e5692b3FC566Dcc3fE484eBDB9F4) | [`0x4075…5ef0`](https://sepolia.uniscan.xyz/tx/0x40751af8078927bb7d8dedaffeae02d745b2794a73315ab8b57d9ff908cb5ef0) | 68,520,836 |
+
+Every Phase B2 action hash is listed below and in `ai-service/PROOF.md`.
 
 ### Phase B2 evidence (2026-11-23 run)
 
@@ -368,4 +394,4 @@ Consequence: once the reserve is empty the system contract accrues **debt** and 
 - RSC: `VerdictSeen` (verdict #1, `action=1 ACT`, 6s after the request) and `RebalanceRequested` (verdict #1, target `0xa8E0681Ca84A84CB971bcD8485d91e03DB96c740`, gap 895 bps) in the same Lasna tx `0x15d61588d7d07f9f1692e16c81b522a0c9f0b400b4099a92d491be38482ec9cb` (block 8835732), but **no destination tx**: the reserve hit zero before the callback was posted, so the vault never saw the rebalance. This is the same failure mode as the dropped `PoolAdded` above.
 - `Rebalanced` / `RebalanceSkipped` / `PausedByVerdict` / `EmergencyExit` on both vaults: **0** events in the whole deployment.
 
-The request backoff and hourly cap (`RequestGate`, `requestBackoff = 600`, `maxRequestsPerHour = 12`, `RequestSuppressed`) are implemented and tested in `src/RoninReactive.sol` but **not** in the deployed bytecode — the live RSC is the 2026-11-19 build. They take effect on the next authorized redeploy.
+The request backoff and hourly cap (`RequestGate`, `requestBackoff = 600`, `maxRequestsPerHour = 12`, `RequestSuppressed`) are implemented and tested in `src/RoninReactive.sol`. At the time of that historical run they were **not** in the deployed bytecode (the RSC was the 2026-11-19 build); the current 2026-11-22 RSC includes them.
