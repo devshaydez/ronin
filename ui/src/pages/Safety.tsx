@@ -5,10 +5,12 @@ import { SourceTag } from '../components/SourceTag';
 import { makeHash } from '../data/mock';
 import { useMemo } from 'react';
 import { useNow } from '../hooks/useNow';
+import { useLiveSafety } from '../hooks/useLiveEvents';
 import { usePoolFrozen } from '../hooks/usePoolFrozen';
 import { useSafetyStatus } from '../hooks/useSafetyStatus';
+import { explorerTx } from '../lib/deployments';
 import { rel, shortAddr } from '../lib/format';
-import { LIVE, PROOF_URL } from '../lib/mode';
+import { LIVE } from '../lib/mode';
 import { useApp } from '../state/AppState';
 
 const PROTECTIONS = [
@@ -28,6 +30,12 @@ export default function Safety() {
   const now = useNow();
   const poolState = usePoolFrozen();
   const safety = useSafetyStatus();
+  const liveSafety = useLiveSafety();
+  const lastFired = [
+    liveSafety.events.find((e) => e.text.includes('Breaker')),
+    liveSafety.events.find((e) => e.text.includes('rate data')),
+    liveSafety.events.find((e) => e.text.includes('AI verdict')),
+  ];
   const frozen = poolState.frozen === true;
   const livePaused = safety.paused === true;
   const liveUnknown = safety.loading || poolState.loading || !!safety.error || !!poolState.error;
@@ -81,13 +89,22 @@ export default function Safety() {
               {triggered === i ? (mode === 'rec' ? <Pill tone="mute" icon="retry">Clearing</Pill> : <Pill tone="warn" icon="pause">Triggered {mode === 'exit' ? 6 : 2} min ago</Pill>) : <Pill icon="ok">Standing by</Pill>}</div>
             <p className="mt-3 text-sm"><span className="text-mut">Triggers when</span><br />{p.trigger}</p>
             <p className="mt-3 text-sm"><span className="text-mut">Ends when</span><br />{p.ends}</p>
-            <p className="mt-3 text-[13px] text-mut">Last fired {LIVE ? 'not indexed' : p.last}</p>
+            <p className="mt-3 text-[13px] text-mut">Last fired {LIVE ? (lastFired[i]?.ts ? rel(lastFired[i].ts!, now) : 'since deployment') : p.last}</p>
           </Card>
         ))}
       </div>
       <Card className="mt-4">
-        <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="mb-1.5 text-lg font-medium tracking-tight">Recent safety events</h3>{LIVE ? <Pill tone="mute">Not indexed</Pill> : <SourceTag kind="sample" reason="seeded demo events" />}</div>
-        {LIVE ? <p className="mt-3 text-[13px] text-mut">Live safety event indexing is not connected in this build. No seeded events are shown; the measured breaker and recovery receipts are in <a href={PROOF_URL} target="_blank" rel="noreferrer" className="text-acc hover:underline">ai-service/PROOF.md</a>.</p> : events.map(([k, text, min], i) => (
+        <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="mb-1.5 text-lg font-medium tracking-tight">Recent safety events</h3>{LIVE ? <SourceTag kind="live" source="vault pause/exit/breaker events · RSC retries · both chains" /> : <SourceTag kind="sample" reason="seeded demo events" />}</div>
+        {LIVE && liveSafety.loading && <p className="mt-3 text-[13px] text-mut">Reading pause, breaker and retry events from all three chains…</p>}
+        {LIVE && liveSafety.error && <p className="mt-3 text-[13px] text-red">Could not read safety events: {liveSafety.error}</p>}
+        {LIVE && !liveSafety.loading && !liveSafety.error && liveSafety.events.length === 0 && <p className="mt-3 text-[13px] text-mut">No pause, breaker, stale-data or retry events since deployment. Nothing is being claimed that the chain does not show.</p>}
+        {LIVE ? liveSafety.events.slice(0, 20).map((e) => (
+          <div key={e.id} className="flex flex-col justify-between gap-1 border-t border-line py-3.5 first:border-0 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-3"><span className="grid h-[34px] w-[34px] flex-none place-items-center rounded-xl bg-c2 text-acc"><Icon name={e.kind} /></span>
+              <div>{e.text}<div className="text-[13px] text-mut">{e.ts ? rel(e.ts, now) : 'since deployment'}</div></div></div>
+            <a className="pl-[46px] text-acc sm:pl-0" href={explorerTx(e.explorer, e.tx)} target="_blank" rel="noreferrer">{shortAddr(e.tx)}</a>
+          </div>
+        )) : events.map(([k, text, min], i) => (
           <div key={text} className="flex flex-col justify-between gap-1 border-t border-line py-3.5 first:border-0 sm:flex-row sm:items-center">
             <div className="flex items-center gap-3"><span className="grid h-[34px] w-[34px] flex-none place-items-center rounded-xl bg-c2 text-acc"><Icon name={k} /></span>
               <div>{text}<div className="text-[13px] text-mut">{rel(now - min * 6e4, now)}</div></div></div>

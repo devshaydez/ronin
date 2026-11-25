@@ -1,11 +1,7 @@
 import { useReadContract } from 'wagmi';
-import { unichainSepolia } from 'wagmi/chains';
-import { parseAbi } from 'viem';
-
-const VAULT = import.meta.env.VITE_UNICHAIN_VAULT_ADDRESS as `0x${string}` | undefined;
-const POOL = import.meta.env.VITE_POOL_U_ADDRESS as `0x${string}` | undefined;
-
-const poolFrozenAbi = parseAbi(['function poolFrozen(address) view returns (bool)']);
+import { vaultAbi } from '../lib/abis';
+import { POOL_U, UNICHAIN } from '../lib/deployments';
+import { LIVE } from '../lib/mode';
 
 /**
  * Reads the breaker's freeze flag directly from the Unichain vault.
@@ -14,17 +10,17 @@ const poolFrozenAbi = parseAbi(['function poolFrozen(address) view returns (bool
  */
 export function usePoolFrozen() {
   const read = useReadContract({
-    abi: poolFrozenAbi,
-    address: VAULT,
+    abi: vaultAbi,
+    address: UNICHAIN.vault,
     functionName: 'poolFrozen',
-    args: POOL ? [POOL] : undefined,
-    chainId: unichainSepolia.id,
-    query: { enabled: !!VAULT && !!POOL, refetchInterval: 5000 },
+    args: [POOL_U],
+    chainId: UNICHAIN.chainId,
+    query: { enabled: LIVE, refetchInterval: 5000 },
   });
 
   return {
-    configured: !!VAULT && !!POOL,
-    pool: POOL,
+    configured: LIVE,
+    pool: POOL_U,
     frozen: read.data,
     loading: read.isLoading,
     error: read.error,

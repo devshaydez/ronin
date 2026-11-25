@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useAccount, useChainId } from 'wagmi';
 import { Banner } from '../components/Banner';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -8,7 +9,11 @@ import { SourceTag } from '../components/SourceTag';
 import type { IconName } from '../components/Icon';
 import { makeHash, type Order } from '../data/mock';
 import { useNow } from '../hooks/useNow';
+import { usePlans, planTotals, type LivePlan } from '../hooks/usePlans';
+import { useVault } from '../hooks/useVault';
+import { useWrites } from '../hooks/useWrites';
 import { countdown, shortAddr, usdc } from '../lib/format';
+import { explorerTx } from '../lib/deployments';
 import { LIVE } from '../lib/mode';
 import { useApp } from '../state/AppState';
 
@@ -17,6 +22,73 @@ const BADGE: Record<Order['state'], { tone: 'ok' | 'warn' | 'bad' | 'mute'; icon
   skipped: { tone: 'mute', icon: 'pause', text: 'Skipped' }, stuck: { tone: 'bad', icon: 'x', text: 'Needs attention' },
   completed: { tone: 'mute', icon: 'ok', text: 'Completed' }, cancelled: { tone: 'mute', icon: 'x', text: 'Cancelled' },
 };
+
+const LIVE_BADGE: Record<LivePlan['state'], { tone: 'ok' | 'warn' | 'bad' | 'mute'; icon: IconName; text: string }> = {
+  active: { tone: 'ok', icon: 'ok', text: 'Active' },
+  skipped: { tone: 'warn', icon: 'pause', text: 'Skipped' },
+  completed: { tone: 'mute', icon: 'ok', text: 'Completed' },
+  cancelled: { tone: 'mute', icon: 'x', text: 'Cancelled' },
+  expired: { tone: 'bad', icon: 'x', text: 'Expired' },
+};
+
+const EVENT_LABEL: Record<string, string> = {
+  PlanCreated: 'Created',
+  PlanExecuted: 'Paid',
+  PlanSkipped: 'Skipped',
+  PlanCancelled: 'Cancelled',
+  PlanExpired: 'Expired',
+};
+
+function LiveOrderCard({ p }: { p: LivePlan }) {
+  const writes = useWrites();
+  const now = useNow();
+  const [hist, setHist] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const b = LIVE_BADGE[p.state];
+  const totals = planTotals(p);
+  const cancelling = writes.tx.stage !== 'confirmed' && writes.tx.stage !== 'failed' && writes.tx.label === 'Cancel standing order' && writes.tx.hash !== undefined;
+  const failed = writes.tx.stage === 'failed' && writes.tx.label === 'Cancel standing order';
+
+  return (
+    <Card className="mb-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div><b className="text-[19px] font-medium">Order #{p.id}</b>{' '}
+          <button className="text-[13px] text-mut hover:text-ink" title={p.payee} onClick={() => { navigator.clipboard?.writeText(p.payee); }}>{shortAddr(p.payee)} copy</button></div>
+        <Pill tone={b.tone} icon={b.icon}>{b.text}</Pill>
+      </div>
+      <div className="my-2 text-[40px] tracking-[-0.045em]">{usdc(Number(p.amount) / 1e6)} <span className="text-lg text-mut">USDC</span></div>
+      <div className="grid grid-cols-2 gap-3 border-t border-line pt-4 text-sm sm:grid-cols-3">
+        <div><span className="block text-xs text-mut">Every</span>{p.period >= 86400 ? `${Math.round(p.period / 86400)} d` : `${p.period} s`}</div>
+        <div><span className="block text-xs text-mut">Payments left</span>{p.remaining}</div>
+        <div><span className="block text-xs text-mut">Next due</span>{p.active ? countdown(Number(p.nextDue) * 1000, now) : 'None'}</div>
+        <div><span className="block text-xs text-mut">Source</span>{p.mode === 0 ? 'Yield only' : 'Yield, then principal'}</div>
+        <div><span className="block text-xs text-mut">Paid</span>{totals.paid}</div>
+        <div><span className="block text-xs text-mut">Skipped</span>{p.skips}</div>
+      </div>
+      {p.state === 'skipped' && <p className="mt-3 text-[13px] text-mut">This order skipped its last {p.skips} payment{p.skips === 1 ? '' : 's'} because yield was short. It pays automatically once enough yield accrues.</p>}
+      {failed && <p className="mt-2 text-[13px] text-red">Cancel failed: {writes.tx.error}</p>}
+      <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2">
+        <Button variant="outline" small onClick={() => setHist(!hist)}>History</Button>
+        {p.active && (confirm
+          ? <span className="flex flex-wrap items-center gap-2 text-[13px]">Cancel this on-chain order? <Button small disabled={cancelling} className="!bg-red !text-white" onClick={() => { void writes.cancelPlan(p.chain, p.id); setConfirm(false); }}>{cancelling ? 'Cancelling…' : 'Yes, cancel'}</Button><Button small variant="outline" onClick={() => setConfirm(false)}>Keep</Button></span>
+          : <Button variant="outline" small onClick={() => setConfirm(true)}>Cancel order</Button>)}
+      </div>
+      {writes.tx.stage === 'pending' && writes.tx.label === 'Cancel standing order' && writes.tx.hash && writes.tx.chain?.chainId === p.chain.chainId && (
+        <p className="mt-2 text-[13px] text-mut">Waiting for the receipt. <a className="text-acc" href={explorerTx(p.chain.chain, writes.tx.hash)} target="_blank" rel="noreferrer">View on Blockscout</a></p>
+      )}
+      {hist && <div className="mt-3 border-t border-line">
+        {p.history.length === 0 && <p className="py-3 text-[13px] text-mut">No events for this order yet.</p>}
+        {p.history.map((e) => {
+          const amount = e.eventName === 'PlanExecuted' ? `${usdc(Number(e.args.amount ?? 0) / 1e6)} USDC` : e.eventName === 'PlanSkipped' ? String(e.args.reason ?? '') : '';
+          return <div key={e.key} className="flex flex-wrap justify-between gap-3 border-t border-line py-3 text-[13px] first:border-0">
+            <div>{EVENT_LABEL[e.eventName] ?? e.eventName}<div className="text-mut">{amount}{e.ts ? ` · ${new Date(e.ts).toLocaleString()}` : ''}</div></div>
+            <a href={explorerTx(p.chain.chain, e.transactionHash)} target="_blank" rel="noreferrer" className="text-acc">{shortAddr(e.transactionHash)}</a>
+          </div>;
+        })}
+      </div>}
+    </Card>
+  );
+}
 
 function OrderCard({ o, yieldNow }: { o: Order; yieldNow: number }) {
   const { setOrders, toast } = useApp();
@@ -63,7 +135,12 @@ const PERIODS = [{ label: '2 min', sec: 120 }, { label: 'day', sec: 86400 }, { l
 
 export default function Orders() {
   const { orders, setOrders, balance, deposited, toast } = useApp();
-  const yieldNow = LIVE ? 0 : balance - deposited;
+  const plans = usePlans();
+  const vault = useVault();
+  const writes = useWrites();
+  const { isConnected } = useAccount();
+  const chainId = useChainId();
+  const yieldNow = LIVE ? vault.yieldNum ?? 0 : balance - deposited;
   const [payee, setPayee] = useState('');
   const [amount, setAmount] = useState('50.00');
   const [period, setPeriod] = useState(0);
@@ -72,10 +149,21 @@ export default function Orders() {
   const [err, setErr] = useState('');
   const v = parseFloat(amount) || 0;
   const wouldSkip = !LIVE && mode === 'yield' && v > yieldNow;
+  const creating = writes.tx.stage !== 'confirmed' && writes.tx.stage !== 'failed' && writes.tx.label === 'Create standing order';
+  const createFailed = writes.tx.stage === 'failed' && writes.tx.label === 'Create standing order';
 
   function create() {
-    if (LIVE) return toast('Live standing-order writes are not wired in this UI build');
-    if (!/^0x[0-9a-fA-F]{40}$/.test(payee.trim())) return setErr('Enter a full address: 0x followed by 40 characters.');
+    if (LIVE) {
+      if (!isConnected) return toast('Connect a wallet first');
+      if (!/^0x[0-9a-fA-F]{40}$/.test(payee.trim())) return setErr('Enter a full address: 0x followed by 40 characters.');
+      const n = parseInt(count);
+      if (!(v > 0) || !(n > 0)) return setErr('Amount and payments must be above 0');
+      if (n > 365) return setErr('Payments must be 365 or fewer.');
+      setErr('');
+      void writes.createPlan(payee.trim() as `0x${string}`, amount, PERIODS[period].sec, n, mode === 'yield' ? 0 : 1);
+      return;
+    }
+    if (!isConnected) return toast('Connect the demo wallet first');
     const n = parseInt(count);
     if (!(v > 0) || !(n > 0)) return toast('Amount and payments must be above 0');
     setErr('');
@@ -84,15 +172,21 @@ export default function Orders() {
     toast('Standing order created');
   }
   const field = 'w-full rounded-[14px] border border-line bg-c2 px-3.5 py-2.5 text-base outline-none focus:border-teal';
+  const wrongNetwork = LIVE && isConnected && chainId !== 84532;
 
   return (
     <main className="mx-auto max-w-[1180px] px-4 pb-8 pt-7 sm:px-6">
       <div className="flex items-center justify-between"><h1 className="text-[28px] font-medium tracking-[-0.035em] sm:text-[34px]">Standing orders</h1>
         <a href="#nf" className="rounded-full bg-teal px-4 py-2 text-sm font-medium text-[#04201c] md:hidden">New order</a></div>
       <p className="mt-1.5 text-mut">Pay someone on a schedule, with no one pressing a button.</p>
-      <div className="mt-3 flex flex-wrap items-center gap-2">{LIVE ? <Pill tone="mute">Not indexed</Pill> : <SourceTag kind="sample" reason="order rows and actions are local; live plan indexing and writes are not connected" />}</div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">{LIVE ? <SourceTag kind="live" source="vault.plans · PlanCreated/Executed/Skipped events" /> : <SourceTag kind="sample" reason="order rows and actions are local" />}</div>
       <div className="mt-5 grid items-start gap-4 md:grid-cols-[1.25fr_1fr]">
-        <div>{LIVE ? <Card className="mb-3.5"><h3 className="text-lg font-medium tracking-tight">No live plan indexer</h3><p className="mt-2 text-[13px] text-mut">Sample standing orders are hidden in live mode. The contract emits plans and payouts, but this UI build does not index those events yet.</p></Card> : orders.map((o) => <OrderCard key={o.id} o={o} yieldNow={yieldNow} />)}</div>
+        <div>
+          {LIVE && plans.loading && <Card className="mb-3.5"><p className="text-[13px] text-mut">Reading standing orders from both vaults…</p></Card>}
+          {LIVE && plans.error && <Card className="mb-3.5"><p className="text-[13px] text-red">Could not read plans: {plans.error}</p></Card>}
+          {LIVE && !plans.loading && !plans.error && plans.plans.length === 0 && <Card className="mb-3.5"><h3 className="text-lg font-medium tracking-tight">No standing orders yet</h3><p className="mt-2 text-[13px] text-mut">Create one on Base Sepolia with the form. Orders from both chains appear here.</p></Card>}
+          {LIVE ? plans.plans.map((p) => <LiveOrderCard key={`${p.chain.chainId}-${p.id}`} p={p} />) : orders.map((o) => <OrderCard key={o.id} o={o} yieldNow={yieldNow} />)}
+        </div>
         <Card id="nf" className="scroll-mt-36 md:sticky md:top-24">
           <h3 className="text-lg font-medium tracking-tight">New standing order</h3>
           <label className="mb-1.5 mt-4 block text-[13px] text-mut">Payee address</label>
@@ -108,8 +202,13 @@ export default function Orders() {
           <label className="mb-1.5 mt-4 block text-[13px] text-mut">Pay from</label>
           <Segmented id="srcmode" value={mode} onChange={setMode} options={[{ value: 'yield', label: 'Yield only' }, { value: 'yield-principal', label: 'Yield, then principal' }]} />
           <p className="mt-2 text-[13px] text-mut">{mode === 'yield' ? 'Your deposit is never touched. Skipped if there is no yield yet.' : 'Always pays, using your deposit if yield runs short.'}</p>
-          <Banner tone={wouldSkip ? 'warn' : 'info'}>Available yield right now: <b>{LIVE ? 'not read' : `${usdc(yieldNow)} USDC`}</b>{wouldSkip && '. This order would be skipped. Switch to Yield, then principal, or lower the amount.'}{LIVE && '. Connect the live order reader before using this form.'}</Banner>
-          <Button className="mt-4 w-full" disabled={LIVE} onClick={create}>{LIVE ? 'On-chain writes not wired' : 'Create order'}</Button>
+          <Banner tone={wouldSkip ? 'warn' : 'info'}>Available yield right now: <b>{LIVE ? (isConnected ? `${usdc(yieldNow)} USDC` : 'connect a wallet') : `${usdc(yieldNow)} USDC`}</b>{wouldSkip && '. This order would be skipped. Switch to Yield, then principal, or lower the amount.'}</Banner>
+          {wrongNetwork && <p className="mt-2 text-[13px] text-amb">Creating an order is on Base Sepolia. Your wallet is on another network; the request will ask you to switch.</p>}
+          {LIVE && writes.tx.stage === 'signing' && <p className="mt-2 text-[13px] text-mut">Confirm the transaction in your wallet…</p>}
+          {LIVE && writes.tx.stage === 'pending' && writes.tx.label === 'Create standing order' && <p className="mt-2 text-[13px] text-mut">Waiting for the receipt. {writes.tx.hash && <a className="text-acc" href={explorerTx('base', writes.tx.hash)} target="_blank" rel="noreferrer">View on Blockscout</a>}</p>}
+          {LIVE && writes.tx.stage === 'confirmed' && writes.tx.label === 'Create standing order' && <p className="mt-2 text-[13px] text-acc">Order created. {writes.tx.hash && <a className="text-acc underline" href={explorerTx('base', writes.tx.hash)} target="_blank" rel="noreferrer">Receipt</a>}</p>}
+          {createFailed && <p className="mt-2 text-[13px] text-red">Create failed: {writes.tx.error}</p>}
+          <Button className="mt-4 w-full" disabled={(LIVE && creating) || (!LIVE && !isConnected)} onClick={create}>{LIVE ? (creating ? 'Creating…' : 'Create order') : isConnected ? 'Create order' : 'Connect wallet'}</Button>
         </Card>
       </div>
     </main>

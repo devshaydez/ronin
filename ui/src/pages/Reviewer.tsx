@@ -10,8 +10,12 @@ import { SourceTag } from '../components/SourceTag';
 import { Sparkline } from '../components/Sparkline';
 import { MEASURED_PROOF } from '../data/proof';
 import { BRK, LANES, proofRows, REB, REC, RES } from '../data/pipeline';
+import { useLiveLoops } from '../hooks/useLiveEvents';
 import { useNow } from '../hooks/useNow';
-import { rel } from '../lib/format';
+import { usePlans } from '../hooks/usePlans';
+import { useSafetyStatus } from '../hooks/useSafetyStatus';
+import { useVault } from '../hooks/useVault';
+import { rel, usdc } from '../lib/format';
 import { LIVE, PROOF_URL, explorerTx } from '../lib/mode';
 import { useApp } from '../state/AppState';
 
@@ -80,10 +84,30 @@ function Stat({ label, source, value, sub, extra }: { label: string; source: str
 function Ops() {
   const { debt, toggleDebt } = useApp();
   const now = useNow();
+  const loops = useLiveLoops();
+  const plans = usePlans();
+  const safety = useSafetyStatus();
+  const vault = useVault();
   const under = debt > 0;
   const tick = Date.now() - 38e3;
   if (LIVE) {
-    return <Card className="mt-5"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-lg font-medium tracking-tight">Operations health</h3><Pill tone="mute">Not connected</Pill></div><p className="mt-2 max-w-[700px] text-[13px] text-mut">No live status service is configured in this build, so no sample funding, subscription or model-latency figures are shown in live mode. The measured model-call median is in the proof block above and in <a href={PROOF_URL} target="_blank" rel="noreferrer" className="text-acc hover:underline">PROOF.md</a>.</p></Card>;
+    const last = loops.loops[0];
+    const payouts = plans.plans.filter((p) => p.history.some((e) => e.eventName === 'PlanExecuted')).sort((a, b) => Number(b.nextDue - a.nextDue));
+    const lastPayout = payouts[0]?.history.find((e) => e.eventName === 'PlanExecuted');
+    return (
+      <>
+        <div className="mt-5 flex items-center justify-between gap-3"><h3 className="text-lg font-medium tracking-tight">Is the automation running?</h3><SourceTag kind="live" source="contract reads + event logs · no private keys" /></div>
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <Stat label="Last AI loop" source="LIVE" value={last?.latency !== undefined ? `${last.latency} s` : '—'} sub={last?.ts ? rel(last.ts, now) : 'No closed loop since deployment'} />
+          <Stat label="Last payout" source="LIVE" value={lastPayout ? `${usdc(Number(lastPayout.args.amount ?? 0) / 1e6)} USDC` : 'None'} sub={lastPayout?.ts ? rel(lastPayout.ts, now) : 'No PlanExecuted event yet'} />
+          <Stat label="Vault state" source="LIVE" value={safety.loading ? 'Reading…' : safety.paused ? 'Paused' : 'Running'} sub={safety.error ? 'Read failed' : 'Base and Unichain'} extra={safety.paused ? <Pill tone="warn" icon="pause">Paused</Pill> : <Pill icon="ok">Open</Pill>} />
+          <Stat label="Standing orders" source="LIVE" value={`${plans.active.length} active`} sub={`${plans.plans.length} total on both chains`} />
+          <Stat label="Your position" source="LIVE" value={vault.live ? `${usdc(vault.balance ?? 0)} USDC` : '—'} sub={vault.walletNum !== undefined ? `Wallet ${usdc(vault.walletNum)} USDC` : 'Connect a wallet'} />
+          <Stat label="AI model call" source="PROOF" value={<>12.0 <span className="text-base text-mut">s median</span></>} sub="Measured normal loops · 2026-11-22 deployment" extra={<div className="w-24"><Sparkline data={[11.2, 9.3, 13.6, 11.1, 13.3, 11.0, 12.0]} /></div>} />
+        </div>
+        <p className="mt-3 text-[13px] text-mut">Funding and subscription balances are checked read-only by <code>npm run verify</code>; they are not re-read here. The measured model-call median is in <a href={PROOF_URL} target="_blank" rel="noreferrer" className="text-acc hover:underline">PROOF.md</a>.</p>
+      </>
+    );
   }
   return (
     <>
