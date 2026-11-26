@@ -310,6 +310,24 @@ still charged; callbacks under 100,000 gas are ignored; a Reactive transaction i
 are about 1s with instant finality (no reorgs, so the latency numbers are real).
 
 ## Operating costs
+
+Measured on the 2026-11-22 deployment (mock/Aave mode, both chains). Every number is a receipt or a
+`cast call` result recorded in [`ai-service/PROOF.md`](ai-service/PROOF.md); nothing here is an estimate
+except the labelled quote.
+
+| Item | Measured | Source |
+|---|---|---|
+| Full Phase B run (2026-11-23) | **3.8075081 lREACT** consumed (1.2367516 starting reserve + 3.0 in top-ups − 0.4292435 left) | PROOF.md, *Cost and deviations* |
+| Worst-case quote before that run | 2.5 lREACT — the run exceeded it by 1.31 lREACT | PROOF.md |
+| Reserves running out | twice; debt peaked at 0.0284 and later 0.0097 lREACT, both cleared by a top-up, debt ended at 0 | PROOF.md |
+| Top-ups needed mid-run | three × 1 lREACT (`0x800dbfe…`, `0xd7aeca6…`, `0xb38f70b…`) | PROOF.md |
+| Idle CRON tick | 74–79k gas | Phase B gas measurement, note below |
+| One plan or retry callback inside a tick | ~137k gas | Phase B gas measurement, note below |
+| Old 5-plan tick (before the per-tick cap) | 746,897 gas ≈ 0.08–0.1 lREACT at 110 gwei | Phase B gas measurement, note below |
+| Per-tick cap / tick rate | 3 plans + 2 retries per tick, 30 ticks/h | PROOF.md |
+| Total Phase B budget | ~6.7 of 12.238 lREACT spent (deploy gas, 4 lREACT RSC funding, 1.5 lREACT reserve seed) | PROOF.md |
+| Burn right now | 0 gas/h — feed off, cron off, no plans, no pending actions | PROOF.md, *Final state* |
+
 - Callbacks are billed to the recipient (vault, requester) in the destination chain's ETH. Prepay reserves at the
   destination callback proxy with `cast send <proxy> "depositTo(address)" <addr> --value 0.01ether`; a recipient with
   no reserves still gets its callback requests accepted but **never delivered** (you only see `ActionRetried`, then
@@ -327,4 +345,9 @@ are about 1s with instant finality (no reorgs, so the latency numbers are real).
   `cast call 0x8888888888888888888888888888888888888888 "reserves(address)(uint256)" $RSC --rpc-url $LASNA_RPC` and
   `cast call 0x8888888888888888888888888888888888888888 "debt(address)(uint256)" $RSC --rpc-url $LASNA_RPC`;
   refill with `cast send 0x8888888888888888888888888888888888888888 "depositTo(address)" $RSC --value 0.5ether`.
-- The Reactive contract is verified with `forge verify-contract --verifier sourcify --chain-id 5318007 <addr> RoninReactive`.
+- **Every deployed contract has published, matching source.** Vaults, registries, requesters, the Aave adapter,
+  `MockUSDC` and the mock pools verify on Blockscout; the Reactive contract verifies on Sourcify (which is what
+  Reactive Network documents). Explorer links, per-contract status and the exact `forge verify-contract` commands
+  are in [`DEPLOYMENTS.md`](DEPLOYMENTS.md#verification), and the landing page footer links to the same pages.
+  The Reactive contract alone:
+  `forge verify-contract --verifier sourcify --chain-id 5318007 <addr> src/RoninReactive.sol:RoninReactive`.
