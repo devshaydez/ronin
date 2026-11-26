@@ -48,7 +48,7 @@ export default function Dashboard() {
       {shownMode === 'wrong' && <Banner tone="warn" action={<Button small onClick={() => { setMode('ok'); toast('Switched to Base Sepolia'); }}>Switch network</Button>}>Switch to Base Sepolia to continue.</Banner>}
 
       <div className="mt-4 grid items-start gap-4 md:grid-cols-2">
-        <div className="grid gap-4">
+        <div className="grid min-w-0 grid-cols-1 gap-4">
           <Card>
             <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-[13px] text-mut">Vault balance</div><SourceTag kind={v.live ? 'live' : 'sample'} source="ERC-4626 position" reason="connect a wallet for the on-chain position" /></div>
             <div className="my-2 text-[40px] leading-[1.05] tracking-[-0.045em] sm:text-[54px]" title={v.live ? `${balance.toFixed(6)} USDC` : 'Sample balance'}>{LIVE && !v.live ? '—' : usdc(balance)} <span className="text-xl text-mut">USDC</span></div>
@@ -59,7 +59,7 @@ export default function Dashboard() {
           </Card>
           <DepositCard balance={balance} />
         </div>
-        <div className="grid gap-4">
+        <div className="grid min-w-0 grid-cols-1 gap-4">
           <Card>
             <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-lg font-medium tracking-tight">Where your money is</h3><SourceTag kind={inUse ? 'live' : 'sample'} source="pool.balanceOf(vault)" reason="allocation indexer not configured" /></div>
             <div className="mt-2 text-[40px] leading-[1.05] tracking-tight">{shownMode === 'exit' ? 'Idle in the vault' : inUse && inUse.vaultBalance > 0 ? <>{inUse.name} <span className="text-xl text-mut">{(inUse.rateBps / 100).toFixed(2)}%</span></> : LIVE ? <>Idle in the vault <span className="text-xl text-mut">{usdc(v.totalNum ?? 0)}</span></> : <>Pool B <span className="text-xl text-mut">7.42%</span></>}</div>

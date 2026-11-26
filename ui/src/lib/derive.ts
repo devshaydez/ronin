@@ -9,12 +9,21 @@ const n = (v: unknown) => Number(v ?? 0);
 const s = (v: unknown) => String(v ?? '');
 const usd = (v: unknown, d = 6) => Number(formatUnits(BigInt((v as bigint | undefined) ?? 0n), d));
 
+/** The RSC pauses with `keccak256("NAME")`, so a literal decode would print mojibake. */
+const KNOWN_REASONS: Record<string, string> = {
+  '0x3130e44a340a68d3b1831586ef07a7d180f977e35fa7920fac9b40ff80ebc47c': 'STALE_DATA',
+  '0x8eb973cd18eaf2aacb7f2841fde26fc350a90251c30f2d91be77fbaeea7aea45': 'OMNI_BREAKER',
+};
+
 export function bytes32ToText(value: unknown) {
-  const hex = s(value).replace(/^0x/, '');
+  const raw = s(value).toLowerCase();
+  if (KNOWN_REASONS[raw]) return KNOWN_REASONS[raw];
+  const hex = raw.replace(/^0x/, '');
   let out = '';
   for (let i = 0; i < hex.length; i += 2) {
     const code = parseInt(hex.slice(i, i + 2), 16);
     if (!code) break;
+    if (code < 32 || code > 126) return `${raw.slice(0, 10)}…`;
     out += String.fromCharCode(code);
   }
   return out || 'UNKNOWN';

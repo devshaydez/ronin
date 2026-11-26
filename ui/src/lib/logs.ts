@@ -38,6 +38,20 @@ export interface LogSource {
   abi: Abi;
   fromBlock: bigint;
   rangeLimit?: number;
+  /** Blockscout base URL used when the RPC cannot serve this range (or first, if asked). */
+  explorer?: string;
+  /** Skip the RPC scan entirely — used where the public RPC prunes history. */
+  explorerFirst?: boolean;
+}
+
+interface ExplorerLog {
+  address: `0x${string}`;
+  topics: `0x${string}`[];
+  data: `0x${string}`;
+  blockNumber: string;
+  transactionHash: `0x${string}`;
+  logIndex: string;
+  timeStamp: string;
 }
 
 interface CacheEntry {
@@ -46,6 +60,18 @@ interface CacheEntry {
 }
 
 // In-memory per session. A page mount re-uses the scan and only fetches the new tail.
+/** One request at a time per host: Blockscout answers a burst of parallel queries with 429. */
+const hostQueue = new Map<string, Promise<unknown>>();
+function serialise<T>(host: string, job: () => Promise<T>): Promise<T> {
+  const previous = hostQueue.get(host) ?? Promise.resolve();
+  const next = previous.then(job, job);
+  hostQueue.set(
+    host,
+    next.catch(() => undefined),
+  );
+  return next;
+}
+
 const cache = new Map<string, CacheEntry>();
 const limits = new Map<number, number>();
 const pending = new Map<string, Promise<DecodedEvent[]>>();
@@ -85,7 +111,44 @@ function decode(source: LogSource, logs: Log[]): DecodedEvent[] {
   }
 }
 
-async function scanSource(source: LogSource): Promise<DecodedEvent[]> {
+/**
+ * One filtered history query on Blockscout. Used when the public RPC either caps the block range or
+ * has pruned the blocks the deployment lives in; it also gives us real block timestamps.
+ */
+async function scanExplorer(source: LogSource): Promise<DecodedEvent[]> {
+  const base = source.explorer;
+  if (!base) throw new Error(`${source.key}: no explorer configured`);
+  const url = `${base}/api?module=logs&action=getLogs&address=${source.address}&fromBlock=${source.fromBlock}&toBlock=latest`;
+  const res = await serialise(base, async () => {
+    const first = await fetch(url);
+    if (first.status !== 429) return first;
+    await new Promise((r) => setTimeout(r, 1500));
+    return fetch(url);
+  });
+  if (!res.ok) throw new Error(`${source.key}: explorer answered ${res.status}`);
+  const json = (await res.json()) as { status?: string; result?: unknown };
+  if (json.status !== '1' || !Array.isArray(json.result)) return [];
+
+  const rows = json.result as ExplorerLog[];
+  const logs = rows.map((row) => ({
+    address: row.address,
+    topics: row.topics,
+    data: row.data,
+    blockNumber: BigInt(row.blockNumber),
+    transactionHash: row.transactionHash,
+    logIndex: Number(row.logIndex),
+    removed: false,
+  })) as unknown as Log[];
+  const stamps = new Map(rows.map((row) => [`${row.transactionHash}-${Number(row.logIndex)}`, Number(row.timeStamp) * 1000]));
+  const decoded = decode(source, logs).map((log) => ({ ...log, ts: stamps.get(log.key) }));
+  const merged = decoded.sort((a, b) =>
+    a.blockNumber === b.blockNumber ? b.logIndex - a.logIndex : Number(b.blockNumber - a.blockNumber),
+  );
+  cache.set(source.key, { logs: merged, lastBlock: merged[0]?.blockNumber ?? source.fromBlock });
+  return merged;
+}
+
+async function scanRpc(source: LogSource): Promise<DecodedEvent[]> {
   const client = clients[source.chainId];
   if (!client) throw new Error(`No RPC client configured for chain ${source.chainId}`);
   const cached = cache.get(source.key);
@@ -137,6 +200,28 @@ async function scanSource(source: LogSource): Promise<DecodedEvent[]> {
     }));
   cache.set(source.key, { logs: merged, lastBlock: latest });
   return merged;
+}
+
+async function scanSource(source: LogSource): Promise<DecodedEvent[]> {
+  if (source.explorerFirst && source.explorer) {
+    try {
+      return await scanExplorer(source);
+    } catch {
+      // fall through to the RPC scan below
+    }
+  }
+  try {
+    return await scanRpc(source);
+  } catch (error) {
+    // A public RPC that prunes history or rate-limits a long scan is common on testnets; the
+    // explorer serves the same logs without a block-range limit.
+    if (!source.explorer) throw error;
+    try {
+      return await scanExplorer(source);
+    } catch {
+      throw error;
+    }
+  }
 }
 
 /** Chunked eth_getLogs from the deployment block, with an RPC range-limit fallback and memory cache. */

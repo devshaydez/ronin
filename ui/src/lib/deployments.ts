@@ -54,7 +54,7 @@ export const SYSTEM_CONTRACT = '0x8888888888888888888888888888888888888888' as c
 export const POOL_U = addr(env.VITE_POOL_U_ADDRESS, '0x79387679Eb59e5692b3FC566Dcc3fE484eBDB9F4');
 
 export const BASE_RPC = env.VITE_BASE_RPC || 'https://base-sepolia-rpc.publicnode.com';
-export const UNICHAIN_RPC = env.VITE_UNICHAIN_RPC || 'https://unichain-sepolia-rpc.publicnode.com';
+export const UNICHAIN_RPC = env.VITE_UNICHAIN_RPC || 'https://sepolia.unichain.org';
 export const LASNA_RPC = env.VITE_LASNA_RPC || 'https://lasna-rpc.rnk.dev/';
 
 /** Blockscout transaction page. The official scanners answer automated reads with a challenge. */
