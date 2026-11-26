@@ -29,6 +29,49 @@ receipt on that chain.
 | `MockUSDC` | Unichain Sepolia | [`0x0Bd0…58F6`](https://sepolia.uniscan.xyz/address/0x0Bd0E5FDa3e21a23D0ef9B3267d1541c2AbE58F6) | [`0xc867…1f3e`](https://sepolia.uniscan.xyz/tx/0xc867a59f2f9bb8c6901fd13716d4e7c4031dd72687d030b0b0cb069221571f3e) | 68,504,320 |
 | Callback proxy (external) | Unichain Sepolia | [`0x775c…66C1`](https://sepolia.uniscan.xyz/address/0x775c9B990ADe401060B78D0e98684eEf8d2466C1) | [`0xa2d7…c8b0`](https://sepolia.uniscan.xyz/tx/0xa2d7f55dd45a234f725ae16a5026a7117495bc5c149a26d794f48f6e4e35c8b0) | 64,628,832 |
 
+### Verification
+
+All contracts were built with solc **0.8.29**, `evm_version = cancun`, `via_ir = true`. Every contract below
+has matching published source. Blockscout is the explorer linked here because it serves plain HTTP reads;
+the official Basescan/Uniscan front ends sit behind a bot challenge.
+
+| Contract | Chain | Explorer | Verified on |
+|---|---|---|---|
+| `RoninVault` | Base Sepolia | [Blockscout](https://base-sepolia.blockscout.com/address/0xCD50707FED3Ef829b0965D6DDCF0Dab56e5cce66) | Blockscout |
+| `AIVerdictRegistry` | Base Sepolia | [Blockscout](https://base-sepolia.blockscout.com/address/0x1Ba4da5288751378c1813a256885c7e376592D34) | Blockscout |
+| `DecisionRequester` | Base Sepolia | [Blockscout](https://base-sepolia.blockscout.com/address/0xd3f0BD4a232AD8061DD119564AF64D8b6f340eBb) | Blockscout |
+| `AaveV3Adapter` | Base Sepolia | [Blockscout](https://base-sepolia.blockscout.com/address/0x6cE1f923B595Ade17FaF04fdE6700766DC7bF568) | Blockscout + Sourcify |
+| `MockLendingPool` (stress) | Base Sepolia | [Blockscout](https://base-sepolia.blockscout.com/address/0x74815327b2650467eba2aF4D37e6D2Bd9467DbE0) | Blockscout |
+| `RoninVault` | Unichain Sepolia | [Blockscout](https://unichain-sepolia.blockscout.com/address/0xce75a97917c8fd52eA30684F0988FAe4485D64cD) | Blockscout |
+| `DecisionRequester` | Unichain Sepolia | [Blockscout](https://unichain-sepolia.blockscout.com/address/0xFcC603B48675Ae138890BF4A155A13A378DAA5B5) | Blockscout |
+| `AIVerdictRegistry` | Unichain Sepolia | [Blockscout](https://unichain-sepolia.blockscout.com/address/0xA97D4F33F029928B8c0B54Ee47129Aa39F51007f) | Blockscout |
+| `MockUSDC` | Unichain Sepolia | [Blockscout](https://unichain-sepolia.blockscout.com/address/0x0Bd0E5FDa3e21a23D0ef9B3267d1541c2AbE58F6) | Blockscout |
+| 16 `MockLendingPool` pools | Unichain Sepolia | [Blockscout](https://unichain-sepolia.blockscout.com/address/0x79387679Eb59e5692b3FC566Dcc3fE484eBDB9F4) | Sourcify (exact match, all 16) |
+| `RoninReactive` | Lasna | [Reactscan](https://lasna.reactscan.net/address/0x69107baF143C38722744a09e3f27c3c076469d5f) | Sourcify (exact match) |
+
+Sourcify record for the Reactive contract:
+<https://sourcify.dev/server/repo-ui/5318007/0x69107baF143C38722744a09e3f27c3c076469d5f>.
+
+**How to reproduce.** No API key is required for the public Blockscout API; the Reactive contract only
+verifies through Sourcify, which is what Reactive Network documents.
+
+```bash
+# Base Sepolia and Unichain Sepolia (constructor args read from the creation tx)
+forge verify-contract <ADDRESS> src/RoninVault.sol:RoninVault \
+  --chain 84532 --rpc-url $BASE_SEPOLIA_RPC \
+  --verifier blockscout --verifier-url https://base-sepolia.blockscout.com/api/ \
+  --guess-constructor-args
+
+# Unichain Sepolia uses --chain 1301 and https://unichain-sepolia.blockscout.com/api/
+
+# Lasna (Reactive)
+forge verify-contract 0x69107baF143C38722744a09e3f27c3c076469d5f \
+  src/RoninReactive.sol:RoninReactive --chain 5318007 --verifier sourcify
+```
+
+If you verify against the official Basescan or Uniscan APIs instead, they need `ETHERSCAN_API_KEY` set in
+your shell; that variable is never read by this repository.
+
 ### Unichain mock pools (all 16)
 
 These are the `vault.pools(i)` entries in order. Pool U is the current target.

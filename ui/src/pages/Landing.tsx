@@ -12,7 +12,8 @@ import { MEASURED_PROOF } from '../data/proof';
 import { useDeploymentStats } from '../hooks/useDeploymentStats';
 import { useNow } from '../hooks/useNow';
 import { countdown, usdc } from '../lib/format';
-import { GITHUB_URL, LIVE, PROOF_URL, explorerTx } from '../lib/mode';
+import { GITHUB_URL, LIVE, PROOF_URL, explorerAddress, explorerTx } from '../lib/mode';
+import { BASE, RSC, UNICHAIN } from '../lib/deployments';
 
 const css = (o: Record<string, string | number>) => o as CSSProperties;
 const EASE = [0.2, 0.8, 0.2, 1] as const;
@@ -222,6 +223,12 @@ export default function Landing() {
       <footer className="mt-[120px] border-t border-line py-10 pb-[60px] text-sm text-mut">
         <div className="mx-auto flex max-w-[1180px] flex-wrap justify-between gap-5 px-7"><span className="flex items-center gap-2 font-semibold text-ink"><Logo size={22} />Ronin</span>
           <div className="flex flex-wrap gap-6"><a href={GITHUB_URL} target="_blank" rel="noreferrer" className="hover:text-ink">GitHub</a><a href={`${GITHUB_URL}#readme`} target="_blank" rel="noreferrer" className="hover:text-ink">Docs</a><a href={PROOF_URL} target="_blank" rel="noreferrer" className="hover:text-ink">Proof</a><Link to="/app/reviewer" className="hover:text-ink">Reviewer</Link></div></div>
+        <div className="mx-auto mt-7 flex max-w-[1180px] flex-wrap items-center gap-x-5 gap-y-2 px-7 text-[13px]">
+          <span className="text-mut">Verified source on the explorers:</span>
+          <a href={explorerAddress('base', BASE.vault)} target="_blank" rel="noreferrer" className="hover:text-ink">Vault · Base Sepolia</a>
+          <a href={explorerAddress('unichain', UNICHAIN.vault)} target="_blank" rel="noreferrer" className="hover:text-ink">Vault · Unichain Sepolia</a>
+          <a href={explorerAddress('lasna', RSC)} target="_blank" rel="noreferrer" className="hover:text-ink">Reactive contract · Lasna</a>
+        </div>
       </footer>
     </div>
   );
