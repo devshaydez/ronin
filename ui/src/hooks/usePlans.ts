@@ -85,6 +85,8 @@ export function usePlans() {
     active: plans.filter((p) => p.active),
     loading: logs.loading || base.loading || uni.loading,
     error: logs.error ?? (base.error as Error | null)?.message ?? (uni.error as Error | null)?.message,
+    partial: logs.partial,
+    note: logs.note,
     isLive: logs.isLive && !base.error && !uni.error,
     refresh: logs.refresh,
   };

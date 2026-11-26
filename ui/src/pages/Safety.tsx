@@ -1,4 +1,5 @@
 import { Card } from '../components/Card';
+import { HistoryNote } from '../components/HistoryNote';
 import { Icon, type IconName } from '../components/Icon';
 import { Pill } from '../components/Pill';
 import { SourceTag } from '../components/SourceTag';
@@ -97,6 +98,7 @@ export default function Safety() {
         <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="mb-1.5 text-lg font-medium tracking-tight">Recent safety events</h3>{LIVE ? <SourceTag kind="live" source="vault pause/exit/breaker events · RSC retries · both chains" /> : <SourceTag kind="sample" reason="seeded demo events" />}</div>
         {LIVE && liveSafety.loading && <p className="mt-3 text-[13px] text-mut">Reading pause, breaker and retry events from all three chains…</p>}
         {LIVE && liveSafety.error && <p className="mt-3 text-[13px] text-red">Could not read safety events: {liveSafety.error}</p>}
+        {LIVE && <HistoryNote note={liveSafety.note} />}
         {LIVE && !liveSafety.loading && !liveSafety.error && liveSafety.events.length === 0 && <p className="mt-3 text-[13px] text-mut">No pause, breaker, stale-data or retry events since deployment. Nothing is being claimed that the chain does not show.</p>}
         {LIVE ? liveSafety.events.slice(0, 20).map((e) => (
           <div key={e.id} className="flex flex-col justify-between gap-1 border-t border-line py-3.5 first:border-0 sm:flex-row sm:items-center">

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
+import { HistoryNote } from '../components/HistoryNote';
 import { Pill } from '../components/Pill';
 import { SourceTag } from '../components/SourceTag';
 import { StepRow } from '../components/StepRow';
@@ -34,6 +35,7 @@ function LivePipeline() {
         <div className="mt-3"><SourceTag kind="live" source="eth_getLogs · cached 60 s" /></div>
         {live.loading && <Card className="mt-4"><p className="text-[13px] text-mut">Reading decision requests and verdicts from all three chains…</p></Card>}
         {live.error && <Card className="mt-4"><p className="text-[13px] text-red">Could not read the pipeline: {live.error}</p></Card>}
+        {live.note && <div className="mt-3 px-1"><HistoryNote note={live.note} className="" /></div>}
         {!live.loading && !live.error && (
           <Card className="mt-4"><h3 className="text-lg font-medium tracking-tight">No loop yet</h3><p className="mt-2 max-w-[680px] text-[13px] text-mut">No decision request has a matching verdict and vault result since these contracts were deployed. The measured deployment receipts are in <a href={PROOF_URL} target="_blank" rel="noreferrer" className="text-acc hover:underline">ai-service/PROOF.md</a>.</p></Card>
         )}
@@ -45,6 +47,7 @@ function LivePipeline() {
     <main className="mx-auto max-w-[1180px] px-4 pb-8 pt-7 sm:px-6">
       <h1 className="text-[28px] font-medium tracking-[-0.035em] sm:text-[34px]">Pipeline</h1>
       <div className="mt-1.5 flex flex-wrap items-center gap-3"><p className="max-w-[620px] text-mut">Real loop receipts: the request, the AI verdict, the vault's own check, and Reactive's measured close.</p><SourceTag kind="live" source="requester + registry + vault + RSC events" /></div>
+      <HistoryNote note={live.note} />
       <div className="mt-5 grid items-start gap-4 md:grid-cols-[300px_1fr]">
         <div className="grid gap-2">
           {live.loops.map((l) => (

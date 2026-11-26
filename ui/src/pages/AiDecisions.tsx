@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Banner } from '../components/Banner';
 import { Card } from '../components/Card';
 import { ConfidenceMeter } from '../components/ConfidenceMeter';
+import { HistoryNote } from '../components/HistoryNote';
 import { Icon, type IconName } from '../components/Icon';
 import { Pill } from '../components/Pill';
 import { Segmented } from '../components/Segmented';
@@ -47,6 +48,7 @@ export default function AiDecisions() {
       <div className="mt-3">{LIVE ? <SourceTag kind="live" source="registry VerdictPosted + VerdictReasoning · both chains" /> : <SourceTag kind="sample" reason="seeded demo decisions" />}</div>
       {LIVE && live.loading && <Card className="mt-4"><p className="text-[13px] text-mut">Reading verdicts and reasoning from both registries…</p></Card>}
       {LIVE && live.error && <Card className="mt-4"><p className="text-[13px] text-red">Could not read decisions: {live.error}</p></Card>}
+      {LIVE && <div className="mt-3 px-1"><HistoryNote note={live.note} className="" /></div>}
       {LIVE && !live.loading && !live.error && liveList.length === 0 && <Card className="mt-4"><h3 className="text-lg font-medium tracking-tight">No verdicts yet</h3><p className="mt-2 max-w-[700px] text-[13px] text-mut">When the AI service posts a verdict, it appears here with its on-chain reasoning hash and the vault's response. The measured deployment proof is in the Reviewer proof tab and <a href={PROOF_URL} target="_blank" rel="noreferrer" className="text-acc hover:underline">PROOF.md</a>.</p></Card>}
       {LIVE && liveList.map((d) => {
         const o = LIVE_OUT[d.outcome] ?? LIVE_OUT.pending;

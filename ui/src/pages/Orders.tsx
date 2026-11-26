@@ -3,6 +3,7 @@ import { useAccount, useChainId } from 'wagmi';
 import { Banner } from '../components/Banner';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
+import { HistoryNote } from '../components/HistoryNote';
 import { Pill } from '../components/Pill';
 import { Segmented } from '../components/Segmented';
 import { SourceTag } from '../components/SourceTag';
@@ -184,6 +185,7 @@ export default function Orders() {
         <div>
           {LIVE && plans.loading && <Card className="mb-3.5"><p className="text-[13px] text-mut">Reading standing orders from both vaults…</p></Card>}
           {LIVE && plans.error && <Card className="mb-3.5"><p className="text-[13px] text-red">Could not read plans: {plans.error}</p></Card>}
+          {LIVE && plans.note && <Card className="mb-3.5"><HistoryNote note={plans.note} className="" /></Card>}
           {LIVE && !plans.loading && !plans.error && plans.plans.length === 0 && <Card className="mb-3.5"><h3 className="text-lg font-medium tracking-tight">No standing orders yet</h3><p className="mt-2 text-[13px] text-mut">Create one on Base Sepolia with the form. Orders from both chains appear here.</p></Card>}
           {LIVE ? plans.plans.map((p) => <LiveOrderCard key={`${p.chain.chainId}-${p.id}`} p={p} />) : orders.map((o) => <OrderCard key={o.id} o={o} yieldNow={yieldNow} />)}
         </div>

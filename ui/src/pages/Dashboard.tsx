@@ -3,6 +3,7 @@ import { Banner } from '../components/Banner';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { DepositCard } from '../components/DepositCard';
+import { HistoryNote } from '../components/HistoryNote';
 import { Icon } from '../components/Icon';
 import { Pill } from '../components/Pill';
 import { SourceTag } from '../components/SourceTag';
@@ -85,6 +86,7 @@ export default function Dashboard() {
           <>
             {activity.loading && <p className="mt-3 text-[13px] text-mut">Reading vault events from Base Sepolia and Unichain Sepolia…</p>}
             {activity.error && <p className="mt-3 text-[13px] text-red">Could not read events: {activity.error}</p>}
+            <HistoryNote note={activity.note} />
             {!activity.loading && !activity.error && activity.items.length === 0 && <p className="mt-3 text-[13px] text-mut">No vault events since deployment yet.</p>}
             <ul>
               <AnimatePresence initial={false}>
