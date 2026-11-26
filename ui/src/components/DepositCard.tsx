@@ -1,5 +1,5 @@
 import { useReducer, useState } from 'react';
-import { useAccount, useChainId } from 'wagmi';
+import { useAccount } from 'wagmi';
 import { useWallet } from '../hooks/useWallet';
 import { useVault } from '../hooks/useVault';
 import { useSafetyStatus } from '../hooks/useSafetyStatus';
@@ -30,8 +30,7 @@ function flow(s: Flow, a: Act): Flow {
 /** Approve then deposit as two steps, with pending, confirmed and failed states. */
 export function DepositCard({ balance }: { balance: number }) {
   const w = useWallet();
-  const { address } = useAccount();
-  const chainId = useChainId();
+  const { address, chainId: walletChainId } = useAccount();
   const vault = useVault();
   const safety = useSafetyStatus();
   const writes = useWrites();
@@ -45,7 +44,7 @@ export function DepositCard({ balance }: { balance: number }) {
   const liveMax = withdraw ? vault.maxWithdrawNum : vault.walletNum;
   const max = LIVE ? liveMax ?? 0 : withdraw ? balance : walletUsdc;
   const paused = LIVE ? safety.basePaused === true && !withdraw : mode === 'paused' && !withdraw;
-  const wrongNetwork = LIVE && w.connected && chainId !== vault.chainId;
+  const wrongNetwork = LIVE && w.connected && walletChainId !== vault.chainId;
   const tx = writes.tx;
   const busy = tx.stage === 'signing' || tx.stage === 'pending';
 
@@ -63,7 +62,7 @@ export function DepositCard({ balance }: { balance: number }) {
   function submit() {
     if (LIVE) {
       if (!w.connected) return w.connect();
-      if (wrongNetwork) return void writes.switchToBase();
+      if (tx.stage === 'wrong-network') return void writes.switchChainAndContinue();
       setError('');
       if (withdraw) {
         if (!address || vault.maxWithdraw === undefined) return setError('Vault position is still loading.');
@@ -94,7 +93,7 @@ export function DepositCard({ balance }: { balance: number }) {
   function liveLabel() {
     if (!LIVE) return !w.connected ? 'Connect wallet' : mode === 'wrong' ? 'Switch network' : withdraw ? 'Withdraw' : s.step === 0 ? 'Approve USDC' : 'Deposit';
     if (!w.connected) return 'Connect wallet';
-    if (wrongNetwork) return 'Switch to Base Sepolia';
+    if (wrongNetwork || tx.stage === 'wrong-network') return 'Switch to Base Sepolia';
     if (busy) return tx.stage === 'signing' ? 'Confirm in wallet…' : 'Confirming…';
     return withdraw ? 'Withdraw' : 'Approve and deposit';
   }

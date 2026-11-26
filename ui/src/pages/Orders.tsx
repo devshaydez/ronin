@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useAccount, useChainId } from 'wagmi';
+import { useAccount } from 'wagmi';
 import { Banner } from '../components/Banner';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -14,7 +14,7 @@ import { usePlans, planTotals, type LivePlan } from '../hooks/usePlans';
 import { useVault } from '../hooks/useVault';
 import { useWrites } from '../hooks/useWrites';
 import { countdown, shortAddr, usdc } from '../lib/format';
-import { explorerTx } from '../lib/deployments';
+import { BASE, explorerTx } from '../lib/deployments';
 import { LIVE } from '../lib/mode';
 import { useApp } from '../state/AppState';
 
@@ -76,6 +76,9 @@ function LiveOrderCard({ p }: { p: LivePlan }) {
       </div>
       {writes.tx.stage === 'pending' && writes.tx.label === 'Cancel standing order' && writes.tx.hash && writes.tx.chain?.chainId === p.chain.chainId && (
         <p className="mt-2 text-[13px] text-mut">Waiting for the receipt. <a className="text-acc" href={explorerTx(p.chain.chain, writes.tx.hash)} target="_blank" rel="noreferrer">View on Blockscout</a></p>
+      )}
+      {writes.tx.stage === 'wrong-network' && writes.tx.chain?.chainId === p.chain.chainId && (
+        <p className="mt-2 text-[13px] text-amb">Your wallet is on another network. <button className="text-acc underline" onClick={() => void writes.switchChainAndContinue()}>Switch to {p.chain.name}</button> to cancel this order.</p>
       )}
       {hist && <div className="mt-3 border-t border-line">
         {p.history.length === 0 && <p className="py-3 text-[13px] text-mut">No events for this order yet.</p>}
@@ -139,8 +142,7 @@ export default function Orders() {
   const plans = usePlans();
   const vault = useVault();
   const writes = useWrites();
-  const { isConnected } = useAccount();
-  const chainId = useChainId();
+  const { isConnected, chainId: walletChainId } = useAccount();
   const yieldNow = LIVE ? vault.yieldNum ?? 0 : balance - deposited;
   const [payee, setPayee] = useState('');
   const [amount, setAmount] = useState('50.00');
@@ -156,6 +158,7 @@ export default function Orders() {
   function create() {
     if (LIVE) {
       if (!isConnected) return toast('Connect a wallet first');
+      if (writes.tx.stage === 'wrong-network') { void writes.switchChainAndContinue(); return; }
       if (!/^0x[0-9a-fA-F]{40}$/.test(payee.trim())) return setErr('Enter a full address: 0x followed by 40 characters.');
       const n = parseInt(count);
       if (!(v > 0) || !(n > 0)) return setErr('Amount and payments must be above 0');
@@ -173,7 +176,7 @@ export default function Orders() {
     toast('Standing order created');
   }
   const field = 'w-full rounded-[14px] border border-line bg-c2 px-3.5 py-2.5 text-base outline-none focus:border-teal';
-  const wrongNetwork = LIVE && isConnected && chainId !== 84532;
+  const wrongNetwork = LIVE && isConnected && walletChainId !== BASE.chainId;
 
   return (
     <main className="mx-auto max-w-[1180px] px-4 pb-8 pt-7 sm:px-6">
@@ -205,12 +208,12 @@ export default function Orders() {
           <Segmented id="srcmode" value={mode} onChange={setMode} options={[{ value: 'yield', label: 'Yield only' }, { value: 'yield-principal', label: 'Yield, then principal' }]} />
           <p className="mt-2 text-[13px] text-mut">{mode === 'yield' ? 'Your deposit is never touched. Skipped if there is no yield yet.' : 'Always pays, using your deposit if yield runs short.'}</p>
           <Banner tone={wouldSkip ? 'warn' : 'info'}>Available yield right now: <b>{LIVE ? (isConnected ? `${usdc(yieldNow)} USDC` : 'connect a wallet') : `${usdc(yieldNow)} USDC`}</b>{wouldSkip && '. This order would be skipped. Switch to Yield, then principal, or lower the amount.'}</Banner>
-          {wrongNetwork && <p className="mt-2 text-[13px] text-amb">Creating an order is on Base Sepolia. Your wallet is on another network; the request will ask you to switch.</p>}
+          {wrongNetwork && <p className="mt-2 text-[13px] text-amb">Creating an order is on Base Sepolia. Your wallet is on another network; use the switch button to continue.</p>}
           {LIVE && writes.tx.stage === 'signing' && <p className="mt-2 text-[13px] text-mut">Confirm the transaction in your wallet…</p>}
           {LIVE && writes.tx.stage === 'pending' && writes.tx.label === 'Create standing order' && <p className="mt-2 text-[13px] text-mut">Waiting for the receipt. {writes.tx.hash && <a className="text-acc" href={explorerTx('base', writes.tx.hash)} target="_blank" rel="noreferrer">View on Blockscout</a>}</p>}
           {LIVE && writes.tx.stage === 'confirmed' && writes.tx.label === 'Create standing order' && <p className="mt-2 text-[13px] text-acc">Order created. {writes.tx.hash && <a className="text-acc underline" href={explorerTx('base', writes.tx.hash)} target="_blank" rel="noreferrer">Receipt</a>}</p>}
           {createFailed && <p className="mt-2 text-[13px] text-red">Create failed: {writes.tx.error}</p>}
-          <Button className="mt-4 w-full" disabled={(LIVE && creating) || (!LIVE && !isConnected)} onClick={create}>{LIVE ? (creating ? 'Creating…' : 'Create order') : isConnected ? 'Create order' : 'Connect wallet'}</Button>
+          <Button className="mt-4 w-full" disabled={(LIVE && creating) || (!LIVE && !isConnected)} onClick={create}>{LIVE ? (creating ? 'Creating…' : writes.tx.stage === 'wrong-network' ? 'Switch to Base Sepolia' : 'Create order') : isConnected ? 'Create order' : 'Connect wallet'}</Button>
         </Card>
       </div>
     </main>
