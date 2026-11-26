@@ -9,7 +9,7 @@ const MODES: { value: Mode; label: string }[] = [
 export function StatesBar() {
   const { mode, setMode, failNext, setFailNext } = useApp();
   return (
-    <div className="mx-auto flex max-w-[1180px] flex-wrap items-center gap-2.5 px-4 pb-12 text-[13px] text-mut sm:px-6">
+    <div className="shell flex flex-wrap items-center gap-2.5 pb-12 text-[13px] text-mut">
       <span>Preview a state:</span>
       <Segmented id="modes" value={mode} onChange={setMode} options={MODES} />
       <span>Next transaction fails:</span>

@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  /* One page shell for the landing and every /app route. */
+  .shell { @apply mx-auto w-full max-w-[1360px] px-4 sm:px-6 lg:px-8; }
+}
+
 :root{--bg:7 11 10;--card:15 22 21;--c2:21 31 29;--ink:238 244 242;--mut:143 160 156;--line:31 44 41;--acc:63 224 197;--amb:242 184 75;--red:255 122 122;
   padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media(prefers-color-scheme:light){:root{--bg:238 243 241;--card:255 255 255;--c2:243 247 246;--ink:10 15 14;--mut:93 106 103;--line:223 232 229;--acc:12 122 106;--amb:168 107 0;--red:201 54 54}}

@@ -45,7 +45,7 @@ function LiveMetrics() {
   const s = useDeploymentStats();
   const value = (n: number | undefined) => n === undefined ? 'Reading…' : usdc(n);
   return (
-    <div className="mx-auto max-w-[1180px] px-7 pt-8">
+    <div className="shell pt-8">
       <div className="flex flex-wrap items-center gap-3"><SourceTag kind="live" source="vault.totalAssets()" /><span className="text-[13px] text-mut">Read from the deployed vaults, not from the marketing sample.</span></div>
       <div className="mt-5 grid gap-5 border-t border-line pt-6 sm:grid-cols-3">
         <div><small className="text-[13px] text-mut">Base Sepolia vault</small><b className="mt-1 block text-[clamp(28px,3.4vw,44px)] font-normal leading-none tracking-[-0.04em]">{value(s.base)} <span className="text-base text-mut">USDC</span></b></div>
@@ -95,7 +95,7 @@ export default function Landing() {
   return (
     <div onPointerMove={(e) => setPt({ x: (e.clientX / innerWidth - 0.5) * -26, y: (e.clientY / innerHeight - 0.5) * -18 })}>
       <nav className={`fixed inset-x-0 top-0 z-20 border-b transition duration-500 ${scrolled ? 'border-white/10 bg-[#070b0a]/60 backdrop-blur-xl' : 'border-transparent'}`}>
-        <div className="mx-auto flex h-[68px] max-w-[1180px] items-center justify-between px-7 text-[#eef4f2]">
+        <div className="shell flex h-[68px] items-center justify-between text-[#eef4f2]">
           <a href="#top" className="flex items-center gap-2.5 text-xl font-semibold tracking-tight"><Logo size={26} />Ronin</a>
           <div className="hidden gap-8 text-sm text-[#b8c7c3] md:flex">{[['How it works', '#how'], ['Standing orders', '#orders'], ['Safety', '#safety'], ['Proof', '#proof']].map(([l, h]) => <a key={l} href={h} className="hover:text-white">{l}</a>)}<a href={GITHUB_URL} target="_blank" rel="noreferrer" className="hover:text-white">GitHub</a></div>
           <Link to="/app"><Button small>Launch app</Button></Link>
@@ -109,7 +109,7 @@ export default function Landing() {
           <div className="disc tilt" style={css({ '--a': '0deg', inset: '6%' })} />
         </div>
         <div className="pointer-events-none absolute inset-0 z-[1] [mask-image:linear-gradient(#000_55%,transparent_82%)]" style={{ background: 'linear-gradient(90deg,rgba(4,7,6,.9) 0,rgba(4,7,6,.55) 42%,transparent 64%)' }} />
-        <div className="relative z-[2] mx-auto max-w-[1180px] px-7 pt-[clamp(92px,14vh,190px)]">
+        <div className="relative z-[2] shell pt-[clamp(92px,14vh,190px)]">
           <motion.div initial={{ opacity: 0, y: 28, filter: 'blur(8px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ duration: 1.1, ease: EASE }}>
             <div className="mb-[clamp(18px,4vh,34px)] inline-flex gap-2.5 rounded-full border border-white/15 px-3.5 py-1.5 text-[13px] text-[#a9bbb6]"><b className="font-medium text-teal">Testnet</b>Base Sepolia and Unichain Sepolia</div>
             <h1 className="max-w-[12ch] text-[clamp(48px,min(9.4vw,19.5vh),138px)] font-medium leading-[1.04] tracking-[-0.035em]">Deposit once.<span className="block bg-gradient-to-b from-[#d3ebe6] to-[#a0c8c0]/45 bg-clip-text text-transparent">It runs itself.</span></h1>
@@ -124,7 +124,7 @@ export default function Landing() {
 
       {LIVE ? <LiveMetrics /> : <>
       <div className="relative z-[3] -mt-[30px] hidden h-[390px] md:block">
-        <div className="relative mx-auto h-full max-w-[1180px] px-7">
+        <div className="relative mx-auto h-full w-full max-w-[1360px] px-4 sm:px-6 lg:px-8">
           <svg viewBox="0 0 1000 300" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" aria-hidden>
             <motion.path d="M0,270 C60,266 80,248 100,240 S240,205 300,190 S440,155 500,140 S640,105 700,90 S840,55 900,40 L1000,28" fill="none" stroke="rgb(var(--mut))" strokeWidth={1.2} vectorEffect="non-scaling-stroke" initial={{ pathLength: 0 } as any} whileInView={{ pathLength: 1 } as any} viewport={{ once: true }} transition={{ duration: 2.4, ease: [0.4, 0, 0.2, 1] }} />
           </svg>
@@ -137,11 +137,11 @@ export default function Landing() {
           ))}
         </div>
       </div>
-      <div className="mx-auto grid max-w-[1180px] grid-cols-2 gap-6 px-7 pt-2 md:hidden">{STATS.map((s) => <div key={s.label}><b className="block text-4xl font-normal tracking-[-0.04em]"><CountUp to={s.to} decimals={s.d ?? 0} suffix={s.s} /></b><small className="text-[13px] text-mut">{s.label}</small></div>)}</div>
-      <p className="mx-auto max-w-[1180px] px-7 pt-4 text-[13px] text-mut">Testnet. Sample values in this prototype. In the app every figure is read from the chain, and an empty vault shows a real 0.</p>
+      <div className="shell grid grid-cols-2 gap-6 pt-2 md:hidden">{STATS.map((s) => <div key={s.label}><b className="block text-4xl font-normal tracking-[-0.04em]"><CountUp to={s.to} decimals={s.d ?? 0} suffix={s.s} /></b><small className="text-[13px] text-mut">{s.label}</small></div>)}</div>
+      <p className="shell pt-4 text-[13px] text-mut">Testnet. Sample values in this prototype. In the app every figure is read from the chain, and an empty vault shows a real 0.</p>
       </>}
 
-      <section id="how" className="mx-auto max-w-[1180px] px-7 pt-[120px] max-md:pt-20">
+      <section id="how" className="shell pt-[120px] max-md:pt-20">
         <H2>Fund it once. Then leave.</H2>
         <div className="mt-4"><SourceTag kind="sample" reason="illustrative product screens, not wallet data" /></div>
         <div className="mt-8 grid gap-4 md:grid-cols-3">
@@ -151,7 +151,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <section id="orders" className="mx-auto grid max-w-[1180px] items-center gap-14 px-7 pt-[120px] max-md:pt-20 md:grid-cols-2">
+      <section id="orders" className="shell grid items-center gap-14 pt-[120px] max-md:pt-20 md:grid-cols-2">
         <motion.div {...rise()}>
           <h2 className="max-w-[15ch] text-[clamp(34px,5vw,64px)] font-medium leading-[1.04] tracking-[-0.035em]">Choose where each payout comes from.</h2>
           <div className="mt-8"><Segmented id="landsrc" value={src} onChange={setSrc} options={[{ value: 'yield', label: 'Yield only' }, { value: 'yield-principal', label: 'Yield, then principal' }]} /></div>
@@ -175,7 +175,7 @@ export default function Landing() {
           <g stroke="url(#gl)" strokeWidth="14"><rect x="110" y="70" width="170" height="92" rx="46" transform="rotate(-24 195 116)" /><rect x="200" y="190" width="170" height="92" rx="46" transform="rotate(32 285 236)" /><rect x="90" y="300" width="170" height="92" rx="46" transform="rotate(-12 175 346)" /></g>
           <g stroke="#eef4f2" strokeOpacity=".25" strokeWidth="2"><rect x="115" y="75" width="170" height="92" rx="46" transform="rotate(-24 195 116)" /><rect x="205" y="195" width="170" height="92" rx="46" transform="rotate(32 285 236)" /></g>
         </svg>
-        <div className="relative mx-auto max-w-[1180px] px-7">
+        <div className="relative shell">
           <H2>It protects itself.</H2>
           <motion.p {...rise()} className="mt-4 max-w-[460px] text-[#98aaa6]">If something looks wrong, Ronin stops first and explains after. Vaults restart on their own when things settle; a pool the breaker exited stays frozen until a human reviews it.</motion.p>
           <div className="mt-11 grid max-w-[560px] gap-3">
@@ -188,7 +188,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <section id="proof" className="mx-auto max-w-[1180px] px-7 pt-[120px] max-md:pt-20">
+      <section id="proof" className="shell pt-[120px] max-md:pt-20">
         <H2>Every step has a receipt.</H2>
         <motion.p {...rise()} className="mt-4 max-w-[460px] text-mut">Receipts from the 2026-11-23 Phase B2 run on this deployment. These are not live refetches; the full evidence report is linked below.</motion.p>
         <div className="mt-4"><SourceTag kind="proof" /></div>
@@ -202,7 +202,7 @@ export default function Landing() {
         <motion.div {...rise()} className="mt-4"><LatencyBreakdown /></motion.div>
       </section>
 
-      <section className="mx-auto max-w-[1180px] px-7 pt-[120px] max-md:pt-20">
+      <section className="shell pt-[120px] max-md:pt-20">
         <H2>Built on Reactive Network.</H2>
         <div className="mt-11 grid gap-4 md:grid-cols-4">
           {[['Event driven', 'A change on chain wakes the contract. Nothing polls on a timer.'], ['No keeper', 'No one runs a script for you, so there is no script to forget.'], ['Across chains', 'Base Sepolia and Unichain Sepolia share rates and safety signals.'], ['Verifiable', 'Each step is a transaction you can open on the explorer.']].map(([t, d], i) => (
@@ -211,7 +211,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-[1180px] px-7 pt-[120px] max-md:pt-20">
+      <section className="shell pt-[120px] max-md:pt-20">
         <H2>What Ronin does not do.</H2>
         <motion.div {...rise()} className="mt-11 grid border-t border-line md:grid-cols-4">
           {[['Testnet only', 'No real money. Mock pools are marked as demo.'], ['No bridging', 'Funds stay on their chain. Only rates and safety signals cross.'], ['AI is a gate', 'It suggests. The vault checks the rules again before moving anything.'], ['Open source', 'Read the contracts and the front end on GitHub.']].map(([t, d]) => (
@@ -221,9 +221,9 @@ export default function Landing() {
       </section>
 
       <footer className="mt-[120px] border-t border-line py-10 pb-[60px] text-sm text-mut">
-        <div className="mx-auto flex max-w-[1180px] flex-wrap justify-between gap-5 px-7"><span className="flex items-center gap-2 font-semibold text-ink"><Logo size={22} />Ronin</span>
+        <div className="shell flex flex-wrap justify-between gap-5"><span className="flex items-center gap-2 font-semibold text-ink"><Logo size={22} />Ronin</span>
           <div className="flex flex-wrap gap-6"><a href={GITHUB_URL} target="_blank" rel="noreferrer" className="hover:text-ink">GitHub</a><a href={`${GITHUB_URL}#readme`} target="_blank" rel="noreferrer" className="hover:text-ink">Docs</a><a href={PROOF_URL} target="_blank" rel="noreferrer" className="hover:text-ink">Proof</a><Link to="/app/reviewer" className="hover:text-ink">Reviewer</Link></div></div>
-        <div className="mx-auto mt-7 flex max-w-[1180px] flex-wrap items-center gap-x-5 gap-y-2 px-7 text-[13px]">
+        <div className="shell mt-7 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px]">
           <span className="text-mut">Verified source on the explorers:</span>
           <a href={explorerAddress('base', BASE.vault)} target="_blank" rel="noreferrer" className="hover:text-ink">Vault · Base Sepolia</a>
           <a href={explorerAddress('unichain', UNICHAIN.vault)} target="_blank" rel="noreferrer" className="hover:text-ink">Vault · Unichain Sepolia</a>

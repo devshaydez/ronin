@@ -39,7 +39,7 @@ export default function AiDecisions() {
   const liveList = live.decisions.filter((d) => f === 'all' || (f === 'executed' ? d.outcome === 'executed' : d.outcome !== 'executed'));
 
   return (
-    <main className="mx-auto max-w-[1180px] px-4 pb-8 pt-7 sm:px-6">
+    <main className="shell pb-8 pt-7">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-[28px] font-medium tracking-[-0.035em] sm:text-[34px]">AI decisions</h1>
         <Segmented id="aif" value={f} onChange={setF} options={[{ value: 'all', label: 'All' }, { value: 'executed', label: 'Executed' }, { value: 'not', label: 'Not executed' }]} />

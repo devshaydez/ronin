@@ -76,7 +76,7 @@ function LivePools() {
 export default function Pools() {
   const now = useNow();
   return (
-    <main className="mx-auto max-w-[1180px] px-4 pb-8 pt-7 sm:px-6">
+    <main className="shell pb-8 pt-7">
       <h1 className="text-[28px] font-medium tracking-[-0.035em] sm:text-[34px]">Pools and rates</h1>
       <p className="mt-1.5 max-w-[620px] text-mut">Rates are annual. Every figure says where it comes from, and old numbers are never shown as live.</p>
       {LIVE ? <LivePools /> : <>

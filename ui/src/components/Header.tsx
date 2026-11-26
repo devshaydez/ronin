@@ -12,7 +12,7 @@ export function Header() {
   const w = useWallet();
   return (
     <header className="sticky top-0 z-10 border-b border-line bg-bg/70 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-[1180px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:px-6">
+      <div className="shell flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5">
         <Link to="/" aria-label="Ronin home" className="mr-auto flex items-center gap-2 text-lg font-semibold tracking-tight sm:mr-3"><Logo /><span className="hidden sm:inline">Ronin</span></Link>
         <nav className="order-last flex w-full gap-1 overflow-x-auto rounded-full border border-line bg-card p-1 lg:order-none lg:mr-auto lg:w-auto">
           {TABS.map(([to, label]) => (

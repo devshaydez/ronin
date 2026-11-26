@@ -37,7 +37,7 @@ export default function Dashboard() {
     : orders.filter((o) => o.state === 'active' || o.state === 'retrying').sort((a, b) => a.next - b.next).slice(0, 3);
 
   return (
-    <main className="mx-auto max-w-[1180px] px-4 pb-8 pt-7 sm:px-6">
+    <main className="shell pb-8 pt-7">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-[28px] font-medium tracking-[-0.035em] sm:text-[34px]">Your vault</h1>
         <StatusPill mode={shownMode} />

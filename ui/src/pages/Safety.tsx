@@ -52,7 +52,7 @@ export default function Safety() {
   if (!LIVE && mode === 'rec') events.unshift(['retry', 'Rates are settling, resume check running', 1]);
 
   return (
-    <main className="mx-auto max-w-[1180px] px-4 pb-8 pt-7 sm:px-6">
+    <main className="shell pb-8 pt-7">
       <h1 className="text-[28px] font-medium tracking-[-0.035em] sm:text-[34px]">Safety status</h1>
       <div className="mt-3 flex flex-wrap items-center gap-2"><SourceTag kind={LIVE ? 'live' : 'sample'} source={LIVE ? 'vault.paused(), vault.poolFrozen(pool)' : undefined} reason="preview state selected below; not a chain read" />{!LIVE && <span className="text-[13px] text-mut">The preview switches are demo-only and are hidden in live mode.</span>}</div>
       <div className="mt-4 flex flex-col items-start gap-7 rounded-[28px] border border-line p-8 sm:flex-row sm:items-center sm:p-9" style={{ background: `radial-gradient(640px 260px at 0 0, ${S.glow}, transparent 70%), rgb(var(--card))` }}>

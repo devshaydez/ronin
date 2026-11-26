@@ -152,7 +152,7 @@ function Demo() {
 export default function Reviewer() {
   const [tab, setTab] = useState<Tab>('proof');
   return (
-    <main className="mx-auto max-w-[1180px] px-4 pb-8 pt-7 sm:px-6">
+    <main className="shell pb-8 pt-7">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-[28px] font-medium tracking-[-0.035em] sm:text-[34px]">Reviewer tools</h1>
         <Segmented id="rv" value={tab} onChange={setTab} options={LIVE ? [{ value: 'proof', label: 'Proof' }, { value: 'ops', label: 'Operations health' }] : [{ value: 'proof', label: 'Proof' }, { value: 'ops', label: 'Operations health' }, { value: 'demo', label: 'Demo controls' }]} />

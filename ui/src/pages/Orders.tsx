@@ -174,7 +174,7 @@ export default function Orders() {
   const wrongNetwork = LIVE && isConnected && walletChainId !== BASE.chainId;
 
   return (
-    <main className="mx-auto max-w-[1180px] px-4 pb-8 pt-7 sm:px-6">
+    <main className="shell pb-8 pt-7">
       <div className="flex items-center justify-between"><h1 className="text-[28px] font-medium tracking-[-0.035em] sm:text-[34px]">Standing orders</h1>
         <a href="#nf" className="rounded-full bg-teal px-4 py-2 text-sm font-medium text-[#04201c] md:hidden">New order</a></div>
       <p className="mt-1.5 text-mut">Pay someone on a schedule, with no one pressing a button.</p>

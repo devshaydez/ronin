@@ -29,7 +29,7 @@ function LivePipeline() {
 
   if (!loop) {
     return (
-      <main className="mx-auto max-w-[1180px] px-4 pb-8 pt-7 sm:px-6">
+      <main className="shell pb-8 pt-7">
         <h1 className="text-[28px] font-medium tracking-[-0.035em] sm:text-[34px]">Pipeline</h1>
         <p className="mt-1.5 max-w-[620px] text-mut">Every decision request, AI verdict, vault outcome and LoopClosed receipt, read from Base Sepolia, Unichain Sepolia and Reactive Lasna.</p>
         <div className="mt-3"><SourceTag kind="live" source="eth_getLogs · cached 60 s" /></div>
@@ -44,7 +44,7 @@ function LivePipeline() {
   }
 
   return (
-    <main className="mx-auto max-w-[1180px] px-4 pb-8 pt-7 sm:px-6">
+    <main className="shell pb-8 pt-7">
       <h1 className="text-[28px] font-medium tracking-[-0.035em] sm:text-[34px]">Pipeline</h1>
       <div className="mt-1.5 flex flex-wrap items-center gap-3"><p className="max-w-[620px] text-mut">Real loop receipts: the request, the AI verdict, the vault's own check, and Reactive's measured close.</p><SourceTag kind="live" source="requester + registry + vault + RSC events" /></div>
       <HistoryNote note={live.note} />
@@ -91,7 +91,7 @@ function DemoPipeline() {
   const isAi = L.steps === REB;
 
   return (
-    <main className="mx-auto max-w-[1180px] px-4 pb-8 pt-7 sm:px-6">
+    <main className="shell pb-8 pt-7">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-[28px] font-medium tracking-[-0.035em] sm:text-[34px]">Demo pipeline</h1>
         <div className="flex flex-wrap gap-2">
