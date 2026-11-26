@@ -52,6 +52,9 @@ const pending = new Map<string, Promise<DecodedEvent[]>>();
 
 const initialLimit = (chainId: number) => (chainId === 5318007 ? 25_000 : 50_000);
 
+// Rough block time per chain, only used to extrapolate a timestamp inside one block window.
+const BLOCK_SECONDS: Record<number, number> = { [baseSepolia.id]: 2, [unichainSepolia.id]: 1, 5318007: 1 };
+
 function isRangeError(message: string) {
   const m = message.toLowerCase();
   return (
@@ -90,6 +93,11 @@ async function scanSource(source: LogSource): Promise<DecodedEvent[]> {
   let from = cached ? cached.lastBlock + 1n : source.fromBlock;
   if (from > latest) return cached?.logs ?? [];
 
+  // Anchor relative times to the head block, not to the newest log: an event from days ago must
+  // not read as if it just happened.
+  const head = await client.getBlock({ blockNumber: latest }).catch(() => undefined);
+  const headTs = head ? Number(head.timestamp) : undefined;
+
   let limit = limits.get(source.chainId) ?? source.rangeLimit ?? initialLimit(source.chainId);
   const out: DecodedEvent[] = cached ? [...cached.logs] : [];
   let requests = 0;
@@ -118,9 +126,15 @@ async function scanSource(source: LogSource): Promise<DecodedEvent[]> {
   // Newest first for the UI, deduped by transaction + log index.
   const seen = new Map<string, DecodedEvent>();
   for (const log of out) seen.set(log.key, log);
-  const merged = [...seen.values()].sort((a, b) =>
-    a.blockNumber === b.blockNumber ? b.logIndex - a.logIndex : Number(b.blockNumber - a.blockNumber),
-  );
+  const blockSeconds = BLOCK_SECONDS[source.chainId] ?? 2;
+  const merged = [...seen.values()]
+    .sort((a, b) =>
+      a.blockNumber === b.blockNumber ? b.logIndex - a.logIndex : Number(b.blockNumber - a.blockNumber),
+    )
+    .map((log) => ({
+      ...log,
+      ts: headTs !== undefined ? (headTs - Number(latest - log.blockNumber) * blockSeconds) * 1000 : undefined,
+    }));
   cache.set(source.key, { logs: merged, lastBlock: latest });
   return merged;
 }

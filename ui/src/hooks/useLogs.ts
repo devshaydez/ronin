@@ -3,19 +3,6 @@ import { LIVE } from '../lib/mode';
 import { fetchSourceLogs, type DecodedEvent } from '../lib/logs';
 import { SOURCES, type SourceKey } from '../lib/sources';
 
-const BLOCK_SECONDS: Record<number, number> = { 84532: 2, 1301: 1, 5318007: 1 };
-const lastScanned: Record<string, bigint> = {};
-
-function withTimestamps(key: SourceKey, logs: DecodedEvent[]) {
-  const source = SOURCES[key];
-  const latest = lastScanned[key];
-  const now = Date.now();
-  return logs.map((log) => ({
-    ...log,
-    ts: latest && log.blockNumber ? now - Number(latest - log.blockNumber) * (BLOCK_SECONDS[source.chainId] ?? 2) * 1000 : undefined,
-  }));
-}
-
 /**
  * Reads a contract's events from the deployment block, chunked, cached in memory and refreshed
  * on a timer. Demo mode never fetches: the sample labels stay visible.
@@ -28,13 +15,8 @@ export function useLogs(...keys: SourceKey[]) {
     refetchInterval: LIVE ? 60_000 : false,
     retry: 1,
     queryFn: async () => {
-      const groups = await Promise.all(
-        keys.map(async (key) => {
-          const logs = await fetchSourceLogs(SOURCES[key]);
-          lastScanned[key] = logs[0]?.blockNumber ?? 0n;
-          return withTimestamps(key, logs);
-        }),
-      );
+      // The reader already fills `ts` from the head block; just merge the sources here.
+      const groups = await Promise.all(keys.map((key) => fetchSourceLogs(SOURCES[key])));
       return groups.flat().sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0)).reverse();
     },
   });
