@@ -12,7 +12,15 @@ export function useWallet() {
   const a = useAccount();
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
-  const { demoConnected, setDemoConnected } = useApp();
+  const { demoConnected, setDemoConnected, toast } = useApp();
   if (!LIVE) return { connected: demoConnected, address: DEMO_ADDRESS as string | undefined, connect: () => setDemoConnected(true), disconnect: () => setDemoConnected(false), demo: true };
-  return { connected: a.isConnected, address: a.address as string | undefined, connect: () => connect({ connector: connectors[0] }), disconnect: () => disconnect(), demo: false };
+  const connectWallet = () => {
+    const connector = connectors[0];
+    if (!connector) {
+      toast('No browser wallet found. Install MetaMask or another wallet, then reload.');
+      return;
+    }
+    connect({ connector }, { onError: (error) => toast(error.message.split('\n')[0].slice(0, 140)) });
+  };
+  return { connected: a.isConnected, address: a.address as string | undefined, connect: connectWallet, disconnect: () => disconnect(), demo: false };
 }

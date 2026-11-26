@@ -91,7 +91,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       {children}
       <AnimatePresence>
         {msg && <motion.div initial={{ opacity: 0, y: 40, x: '-50%' }} animate={{ opacity: 1, y: 0, x: '-50%' }} exit={{ opacity: 0, y: 40, x: '-50%' }} transition={{ duration: 0.5, ease: [0.2, 0.8, 0.2, 1] }}
-          className="fixed bottom-6 left-1/2 z-30 rounded-full border border-teal bg-c2 px-5 py-3">{msg}</motion.div>}
+          role="status" aria-live="polite" className="fixed bottom-6 left-1/2 z-30 max-w-[calc(100vw-2rem)] rounded-full border border-teal bg-c2 px-5 py-3 text-center">{msg}</motion.div>}
       </AnimatePresence>
     </AppCtx.Provider>
   );

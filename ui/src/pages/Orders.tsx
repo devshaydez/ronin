@@ -3,6 +3,7 @@ import { useAccount } from 'wagmi';
 import { Banner } from '../components/Banner';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
+import { Dialog } from '../components/Dialog';
 import { HistoryNote } from '../components/HistoryNote';
 import { Pill } from '../components/Pill';
 import { Segmented } from '../components/Segmented';
@@ -69,10 +70,26 @@ function LiveOrderCard({ p }: { p: LivePlan }) {
       {p.state === 'skipped' && <p className="mt-3 text-[13px] text-mut">This order skipped its last {p.skips} payment{p.skips === 1 ? '' : 's'} because yield was short. It pays automatically once enough yield accrues.</p>}
       <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2">
         <Button variant="outline" small onClick={() => setHist(!hist)}>History</Button>
-        {p.active && (confirm
-          ? <span className="flex flex-wrap items-center gap-2 text-[13px]">Cancel this on-chain order? <Button small disabled={cancelling} className="!bg-red !text-white" onClick={() => { void writes.cancelPlan(p.chain, p.id); setConfirm(false); }}>{cancelling ? 'Cancelling…' : 'Yes, cancel'}</Button><Button small variant="outline" onClick={() => setConfirm(false)}>Keep</Button></span>
-          : <Button variant="outline" small onClick={() => setConfirm(true)}>Cancel order</Button>)}
+        {p.active && <Button variant="outline" small onClick={() => setConfirm(true)}>Cancel order</Button>}
       </div>
+      <Dialog
+        open={confirm}
+        onClose={() => setConfirm(false)}
+        title={`Cancel order #${p.id}?`}
+        description={`This stops future payouts on ${p.chain.name}. Your deposit stays in the vault and remains yours.`}
+      >
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button small variant="outline" onClick={() => setConfirm(false)}>Keep order</Button>
+          <Button
+            small
+            className="!bg-red !text-white"
+            disabled={cancelling}
+            onClick={() => { setConfirm(false); void writes.cancelPlan(p.chain, p.id); }}
+          >
+            {cancelling ? 'Cancelling…' : 'Yes, cancel'}
+          </Button>
+        </div>
+      </Dialog>
       {writes.tx.chain?.chainId === p.chain.chainId && (
         <TxReceipt tx={writes.tx} switchLabel={`Switch to ${p.chain.name}`} onSwitch={() => void writes.switchChainAndContinue()} />
       )}
@@ -117,10 +134,19 @@ function OrderCard({ o, yieldNow }: { o: Order; yieldNow: number }) {
       {o.state === 'retrying' && <p className="mt-3 text-[13px] text-mut">Attempt {o.attempt ?? 2} of 3. The earlier callback did not complete, so the RSC is retrying automatically. This is recovery time, not a faster loop.</p>}
       <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2">
         <Button variant="outline" small onClick={() => setHist(!hist)}>History</Button>
-        {live && !LIVE && (confirm
-          ? <span className="flex flex-wrap items-center gap-2 text-[13px]">Cancel this order? <Button small className="!bg-red !text-white" onClick={() => { patch({ state: 'cancelled' }); setConfirm(false); toast('Order cancelled'); }}>Yes, cancel</Button><Button small variant="outline" onClick={() => setConfirm(false)}>Keep</Button></span>
-          : <Button variant="outline" small onClick={() => setConfirm(true)}>Cancel order</Button>)}
+        {live && !LIVE && <Button variant="outline" small onClick={() => setConfirm(true)}>Cancel order</Button>}
       </div>
+      <Dialog
+        open={confirm}
+        onClose={() => setConfirm(false)}
+        title="Cancel this order?"
+        description="This is the demo replay: the seeded order stops, and nothing on chain changes."
+      >
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button small variant="outline" onClick={() => setConfirm(false)}>Keep order</Button>
+          <Button small className="!bg-red !text-white" onClick={() => { patch({ state: 'cancelled' }); setConfirm(false); toast('Order cancelled'); }}>Yes, cancel</Button>
+        </div>
+      </Dialog>
       {hist && <div className="mt-3 border-t border-line">{rows.map((r, i) => {
         const fromYield = o.mode === 'yield-principal' && i === 1 ? Math.min(o.amount, yieldNow) : o.amount;
         return <div key={r.n} className="flex justify-between gap-3 border-t border-line py-3 text-[13px] first:border-0">
@@ -192,10 +218,13 @@ export default function Orders() {
           <label className="mb-1.5 mt-4 block text-[13px] text-mut">Payee address</label>
           <input className={field} value={payee} onChange={(e) => setPayee(e.target.value)} placeholder="0x..." autoComplete="off" />
           {err && <div className="mt-1 text-[13px] text-red">{err}</div>}
-          <div className="mt-4 grid grid-cols-2 gap-2.5">
-            <div><label className="mb-1.5 block text-[13px] text-mut">Amount, USDC</label><input className={field} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-            <div><label className="mb-1.5 block text-[13px] text-mut">Every</label>
-              <select className={`${field} chev`} value={period} onChange={(e) => setPeriod(+e.target.value)}>{PERIODS.map((p, i) => <option key={p.label} value={i}>{p.label}</option>)}</select></div>
+          <div className="mt-4">
+            <label className="mb-1.5 block text-[13px] text-mut">Amount, USDC</label>
+            <input className={field} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          </div>
+          <div className="mt-4">
+            <label className="mb-1.5 block text-[13px] text-mut">Every</label>
+            <Segmented id="period" value={String(period)} onChange={(v) => setPeriod(Number(v))} options={PERIODS.map((p, i) => ({ value: String(i), label: p.label }))} />
           </div>
           <label className="mb-1.5 mt-4 block text-[13px] text-mut">Number of payments</label>
           <input className={field} inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value)} />

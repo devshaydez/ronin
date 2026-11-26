@@ -8,7 +8,18 @@
 }
 
 :root{--bg:7 11 10;--card:15 22 21;--c2:21 31 29;--ink:238 244 242;--mut:143 160 156;--line:31 44 41;--acc:63 224 197;--amb:242 184 75;--red:255 122 122;
-  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:dark;scrollbar-width:thin;scrollbar-color:rgb(var(--mut)/.35) transparent}
+
+/* Scrollbars: dark track, muted thumb that brightens on hover. Applies to the page and to every
+   inner scroll area (the Segmented bar, the network menu, dialogs). Firefox uses the two
+   properties above; WebKit/Blink use the pseudo-elements below. */
+*{scrollbar-width:thin;scrollbar-color:rgb(var(--mut)/.35) transparent}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgb(var(--mut)/.35);border:2px solid transparent;border-radius:999px;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:rgb(var(--acc)/.5);border:2px solid transparent;border-radius:999px;background-clip:content-box}
+::-webkit-scrollbar-corner{background:transparent}
 @media(prefers-color-scheme:light){:root{--bg:238 243 241;--card:255 255 255;--c2:243 247 246;--ink:10 15 14;--mut:93 106 103;--line:223 232 229;--acc:12 122 106;--amb:168 107 0;--red:201 54 54}}
 html{scroll-behavior:smooth}
 body{@apply bg-bg text-ink font-sans antialiased;background-image:radial-gradient(900px 480px at 85% -8%,rgb(63 224 197/.16),transparent 70%)}
