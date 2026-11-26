@@ -7,6 +7,7 @@ import { HistoryNote } from '../components/HistoryNote';
 import { Pill } from '../components/Pill';
 import { Segmented } from '../components/Segmented';
 import { SourceTag } from '../components/SourceTag';
+import { TxReceipt } from '../components/TxReceipt';
 import type { IconName } from '../components/Icon';
 import { makeHash, type Order } from '../data/mock';
 import { useNow } from '../hooks/useNow';
@@ -47,8 +48,7 @@ function LiveOrderCard({ p }: { p: LivePlan }) {
   const [confirm, setConfirm] = useState(false);
   const b = LIVE_BADGE[p.state];
   const totals = planTotals(p);
-  const cancelling = writes.tx.stage !== 'confirmed' && writes.tx.stage !== 'failed' && writes.tx.label === 'Cancel standing order' && writes.tx.hash !== undefined;
-  const failed = writes.tx.stage === 'failed' && writes.tx.label === 'Cancel standing order';
+  const cancelling = (writes.tx.stage === 'signing' || writes.tx.stage === 'pending') && writes.tx.chain?.chainId === p.chain.chainId && writes.tx.label.startsWith('Cancel');
 
   return (
     <Card className="mb-3.5">
@@ -67,18 +67,14 @@ function LiveOrderCard({ p }: { p: LivePlan }) {
         <div><span className="block text-xs text-mut">Skipped</span>{p.skips}</div>
       </div>
       {p.state === 'skipped' && <p className="mt-3 text-[13px] text-mut">This order skipped its last {p.skips} payment{p.skips === 1 ? '' : 's'} because yield was short. It pays automatically once enough yield accrues.</p>}
-      {failed && <p className="mt-2 text-[13px] text-red">Cancel failed: {writes.tx.error}</p>}
       <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2">
         <Button variant="outline" small onClick={() => setHist(!hist)}>History</Button>
         {p.active && (confirm
           ? <span className="flex flex-wrap items-center gap-2 text-[13px]">Cancel this on-chain order? <Button small disabled={cancelling} className="!bg-red !text-white" onClick={() => { void writes.cancelPlan(p.chain, p.id); setConfirm(false); }}>{cancelling ? 'Cancelling…' : 'Yes, cancel'}</Button><Button small variant="outline" onClick={() => setConfirm(false)}>Keep</Button></span>
           : <Button variant="outline" small onClick={() => setConfirm(true)}>Cancel order</Button>)}
       </div>
-      {writes.tx.stage === 'pending' && writes.tx.label === 'Cancel standing order' && writes.tx.hash && writes.tx.chain?.chainId === p.chain.chainId && (
-        <p className="mt-2 text-[13px] text-mut">Waiting for the receipt. <a className="text-acc" href={explorerTx(p.chain.chain, writes.tx.hash)} target="_blank" rel="noreferrer">View on Blockscout</a></p>
-      )}
-      {writes.tx.stage === 'wrong-network' && writes.tx.chain?.chainId === p.chain.chainId && (
-        <p className="mt-2 text-[13px] text-amb">Your wallet is on another network. <button className="text-acc underline" onClick={() => void writes.switchChainAndContinue()}>Switch to {p.chain.name}</button> to cancel this order.</p>
+      {writes.tx.chain?.chainId === p.chain.chainId && (
+        <TxReceipt tx={writes.tx} switchLabel={`Switch to ${p.chain.name}`} onSwitch={() => void writes.switchChainAndContinue()} />
       )}
       {hist && <div className="mt-3 border-t border-line">
         {p.history.length === 0 && <p className="py-3 text-[13px] text-mut">No events for this order yet.</p>}
@@ -152,8 +148,7 @@ export default function Orders() {
   const [err, setErr] = useState('');
   const v = parseFloat(amount) || 0;
   const wouldSkip = !LIVE && mode === 'yield' && v > yieldNow;
-  const creating = writes.tx.stage !== 'confirmed' && writes.tx.stage !== 'failed' && writes.tx.label === 'Create standing order';
-  const createFailed = writes.tx.stage === 'failed' && writes.tx.label === 'Create standing order';
+  const creating = (writes.tx.stage === 'signing' || writes.tx.stage === 'pending') && writes.tx.label === 'Create standing order';
 
   function create() {
     if (LIVE) {
@@ -209,10 +204,7 @@ export default function Orders() {
           <p className="mt-2 text-[13px] text-mut">{mode === 'yield' ? 'Your deposit is never touched. Skipped if there is no yield yet.' : 'Always pays, using your deposit if yield runs short.'}</p>
           <Banner tone={wouldSkip ? 'warn' : 'info'}>Available yield right now: <b>{LIVE ? (isConnected ? `${usdc(yieldNow)} USDC` : 'connect a wallet') : `${usdc(yieldNow)} USDC`}</b>{wouldSkip && '. This order would be skipped. Switch to Yield, then principal, or lower the amount.'}</Banner>
           {wrongNetwork && <p className="mt-2 text-[13px] text-amb">Creating an order is on Base Sepolia. Your wallet is on another network; use the switch button to continue.</p>}
-          {LIVE && writes.tx.stage === 'signing' && <p className="mt-2 text-[13px] text-mut">Confirm the transaction in your wallet…</p>}
-          {LIVE && writes.tx.stage === 'pending' && writes.tx.label === 'Create standing order' && <p className="mt-2 text-[13px] text-mut">Waiting for the receipt. {writes.tx.hash && <a className="text-acc" href={explorerTx('base', writes.tx.hash)} target="_blank" rel="noreferrer">View on Blockscout</a>}</p>}
-          {LIVE && writes.tx.stage === 'confirmed' && writes.tx.label === 'Create standing order' && <p className="mt-2 text-[13px] text-acc">Order created. {writes.tx.hash && <a className="text-acc underline" href={explorerTx('base', writes.tx.hash)} target="_blank" rel="noreferrer">Receipt</a>}</p>}
-          {createFailed && <p className="mt-2 text-[13px] text-red">Create failed: {writes.tx.error}</p>}
+          {LIVE && <TxReceipt tx={writes.tx} switchLabel="Switch to Base Sepolia" onSwitch={() => void writes.switchChainAndContinue()} />}
           <Button className="mt-4 w-full" disabled={(LIVE && creating) || (!LIVE && !isConnected)} onClick={create}>{LIVE ? (creating ? 'Creating…' : writes.tx.stage === 'wrong-network' ? 'Switch to Base Sepolia' : 'Create order') : isConnected ? 'Create order' : 'Connect wallet'}</Button>
         </Card>
       </div>

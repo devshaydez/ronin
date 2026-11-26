@@ -9,10 +9,10 @@ import { Card } from './Card';
 import { Icon } from './Icon';
 import { Segmented } from './Segmented';
 import { SourceTag } from './SourceTag';
+import { TxReceipt } from './TxReceipt';
 import { makeHash } from '../data/mock';
 import { usdc } from '../lib/format';
 import { LIVE } from '../lib/mode';
-import { explorerTx } from '../lib/deployments';
 import { useApp } from '../state/AppState';
 
 type Stage = 'idle' | 'pending' | 'approved' | 'done' | 'failed';
@@ -99,7 +99,6 @@ export function DepositCard({ balance }: { balance: number }) {
   }
 
   const liveError = tx.stage === 'failed' ? tx.error : undefined;
-  const confirmed = tx.stage === 'confirmed';
 
   return (
     <Card>
@@ -125,16 +124,16 @@ export function DepositCard({ balance }: { balance: number }) {
       )}
       {paused && <p className="my-2 text-[13px] text-mut">Deposits are off while the vault is paused. Withdrawals still work.</p>}
       {wrongNetwork && <p className="my-2 text-[13px] text-amb">Your wallet is on another network. Switch to Base Sepolia to continue.</p>}
-      <div className="my-2 flex min-h-[26px] flex-wrap items-center gap-2.5 text-sm" aria-live="polite">
-        {!LIVE && s.stage === 'pending' && <><span className="spinner" />Waiting for confirmation <span className="text-mut" title="Demo placeholder, not an on-chain transaction">{s.hash}</span></>}
-        {!LIVE && s.stage === 'approved' && <><span className="text-acc"><Icon name="ok" size={16} /></span>Approved. Now deposit.</>}
-        {!LIVE && s.stage === 'done' && <><span className="text-acc"><Icon name="ok" size={16} /></span>Confirmed <span className="text-mut" title="Demo placeholder, not an on-chain transaction">{s.hash}</span></>}
-        {!LIVE && s.stage === 'failed' && <><span className="text-red"><Icon name="x" size={16} /></span>Transaction failed. You rejected the request, so nothing was spent. <button className="text-acc underline" onClick={submit}>Try again</button></>}
-        {LIVE && tx.stage === 'signing' && <><span className="spinner" />{tx.label}: confirm in your wallet</>}
-        {LIVE && tx.stage === 'pending' && <><span className="spinner" />{tx.label}: waiting for the receipt {tx.hash && <a href={explorerTx('base', tx.hash)} target="_blank" rel="noreferrer" className="text-acc">{tx.hash.slice(0, 10)}…</a>}</>}
-        {LIVE && confirmed && <><span className="text-acc"><Icon name="ok" size={16} /></span>Confirmed. <a href={explorerTx('base', tx.hash!)} target="_blank" rel="noreferrer" className="text-acc">View on Blockscout</a></>}
-        {LIVE && tx.stage === 'failed' && <><span className="text-red"><Icon name="x" size={16} /></span>Transaction failed. Nothing was moved.</>}
-      </div>
+      {LIVE ? (
+        <TxReceipt tx={tx} switchLabel="Switch to Base Sepolia" onSwitch={() => void writes.switchChainAndContinue()} />
+      ) : (
+        <div className="my-2 flex min-h-[26px] flex-wrap items-center gap-2.5 text-sm" aria-live="polite">
+          {s.stage === 'pending' && <><span className="spinner" />Waiting for confirmation <span className="text-mut" title="Demo placeholder, not an on-chain transaction">{s.hash}</span></>}
+          {s.stage === 'approved' && <><span className="text-acc"><Icon name="ok" size={16} /></span>Approved. Now deposit.</>}
+          {s.stage === 'done' && <><span className="text-acc"><Icon name="ok" size={16} /></span>Confirmed <span className="text-mut" title="Demo placeholder, not an on-chain transaction">{s.hash}</span></>}
+          {s.stage === 'failed' && <><span className="text-red"><Icon name="x" size={16} /></span>Transaction failed. You rejected the request, so nothing was spent. <button className="text-acc underline" onClick={submit}>Try again</button></>}
+        </div>
+      )}
       <Button className="mt-1 w-full" disabled={paused || (!LIVE && s.stage === 'pending') || (LIVE && busy)} onClick={submit}>{label}</Button>
     </Card>
   );
