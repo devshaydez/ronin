@@ -1,4 +1,4 @@
-import { useReducer, useState } from 'react';
+import { useEffect, useReducer, useState } from 'react';
 import { useAccount } from 'wagmi';
 import { useWallet } from '../hooks/useWallet';
 import { useVault } from '../hooks/useVault';
@@ -47,6 +47,13 @@ export function DepositCard({ balance }: { balance: number }) {
   const wrongNetwork = LIVE && w.connected && walletChainId !== vault.chainId;
   const tx = writes.tx;
   const busy = tx.stage === 'signing' || tx.stage === 'pending';
+
+  // One click on "Switch to Base Sepolia" arms the action; this finishes the job by asking the
+  // wallet to switch and then sending the same approve/deposit or withdraw.
+  const continueAfterSwitch = writes.switchChainAndContinue;
+  useEffect(() => {
+    if (LIVE && tx.stage === 'wrong-network') void continueAfterSwitch();
+  }, [LIVE, tx.stage, continueAfterSwitch]);
 
   if (!withdraw && !LIVE && (mode === 'nousdc' || walletUsdc <= 0)) {
     return (

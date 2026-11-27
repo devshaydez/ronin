@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAccount } from 'wagmi';
 import { Banner } from '../components/Banner';
 import { Button } from '../components/Button';
@@ -50,6 +50,10 @@ function LiveOrderCard({ p }: { p: LivePlan }) {
   const b = LIVE_BADGE[p.state];
   const totals = planTotals(p);
   const cancelling = (writes.tx.stage === 'signing' || writes.tx.stage === 'pending') && writes.tx.chain?.chainId === p.chain.chainId && writes.tx.label.startsWith('Cancel');
+  const continueAfterSwitch = writes.switchChainAndContinue;
+  useEffect(() => {
+    if (writes.tx.stage === 'wrong-network' && writes.tx.chain?.chainId === p.chain.chainId) void continueAfterSwitch();
+  }, [p.chain.chainId, writes.tx.stage, writes.tx.chain?.chainId, continueAfterSwitch]);
 
   return (
     <Card className="mb-3.5">
@@ -175,6 +179,10 @@ export default function Orders() {
   const v = parseFloat(amount) || 0;
   const wouldSkip = !LIVE && mode === 'yield' && v > yieldNow;
   const creating = (writes.tx.stage === 'signing' || writes.tx.stage === 'pending') && writes.tx.label === 'Create standing order';
+  const continueAfterSwitch = writes.switchChainAndContinue;
+  useEffect(() => {
+    if (LIVE && writes.tx.stage === 'wrong-network') void continueAfterSwitch();
+  }, [LIVE, writes.tx.stage, continueAfterSwitch]);
 
   function create() {
     if (LIVE) {
