@@ -218,19 +218,26 @@ plus 4 `ActionRetried` and 1 `ActionStuck`.
 `cronOn=false`, `needCron()=false`, `watchdog=false`, `rescoreEveryTicks=0`, `estimatedBurnPerHour()=0`,
 no active plans, no in-flight actions. The RSC is still subscribed to the Aave `ReserveDataUpdated` feed, so it keeps
 reacting to real protocol updates: measured with everything else idle, **0.0714 lREACT per 2 minutes (≈2.1 lREACT/h)**
-at ~100 gwei, about 0.032 lREACT per reaction. That feed, not cron, is the remaining cost; the only way to stop it
-without a code change is to let the reserve run out (which then accrues debt). A `disableFeed()`/`unsubscribeAave`
-owner knob is the next thing to add.
+at ~100 gwei, about 0.032 lREACT per reaction. That feed, not cron, is the remaining cost. The deployed RSC
+already has the owner knob: `disableFeed()` unsubscribes every configured Aave feed (with `enableFeed()` to
+restore them), so `estimatedBurnPerHour()` reaches 0 without waiting for the reserve to run out. Verified by read-only `eth_call` against
+`0x69107baF143C38722744a09e3f27c3c076469d5f`: `disableFeed()` reverts for a stranger with `only owner`, and
+`feedOn()` currently returns `false`.
 
-### Open defect found in the demo
+### Cost-basis defect in the 2026-11-20 build (fixed before the current deployment)
 
-`yieldAvailable` does not fall as a `YIELD_ONLY` plan pays: `_withdraw` reduces `costBasis` in proportion to the
-shares burned, which removes the same fraction of the unrealised gain, so the reported yield stays ~constant
-(40 → 37 USDC after 25 USDC of payouts) while the pot shrinks. Consequence: a `YIELD_ONLY` plan keeps paying while
-the vault silently erodes principal, and `YIELD_THEN_PRINCIPAL` never reports a principal component (all six
-mode-1 payouts show `fromYield = amount`, `fromPrincipal = 0`). Fix: reduce cost basis by the principal component
-only (`fromPrincipal`) instead of the proportional share, and add a test asserting that `yieldAvailable` drops by
-the paid amount. Not changed here: it moves money semantics and needs its own redeploy.
+`yieldAvailable` did not fall as a `YIELD_ONLY` plan paid: `_withdraw` reduced `costBasis` in proportion to the
+shares burned, which removed the same fraction of the unrealised gain, so the reported yield stayed ~constant
+(40 → 37 USDC after 25 USDC of payouts) while the pot shrank. Consequence: a `YIELD_ONLY` plan kept paying after
+the true yield was gone, silently eroding principal, and `YIELD_THEN_PRINCIPAL` never reported a principal
+component here (all six mode-1 payouts show `fromYield = amount`, `fromPrincipal = 0`).
+
+Fixed in `7fe5da3` ("Charge withdrawals only their principal to cost basis"): `_withdraw` measures yield first
+and reduces `costBasis` only by `max(0, assets − yieldAvailable)`. The 2026-11-22 deployment includes the fix —
+the verified source of both live vaults (`0xCD50…ce66` and `0xce75…64cD`) contains that `_withdraw`, and
+`test_sixYieldOnlyPayoutsLeavePrincipalUntouched` / `test_withdrawingPartOfTheYieldLeavesBasisUnchanged` lock it
+in. No redeploy is needed for it, and the Phase B2 run is unaffected (it created no `YIELD_ONLY` plan and paid no
+yield; see `ai-service/PROOF.md`).
 
 ## Networks
 
