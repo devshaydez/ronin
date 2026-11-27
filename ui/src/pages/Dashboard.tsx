@@ -5,10 +5,12 @@ import { Card } from '../components/Card';
 import { DepositCard } from '../components/DepositCard';
 import { HistoryNote } from '../components/HistoryNote';
 import { Icon } from '../components/Icon';
+import { MoneyMoved } from '../components/MoneyMoved';
 import { Pill } from '../components/Pill';
 import { SourceTag } from '../components/SourceTag';
 import { StatusPill } from '../components/StatusPill';
 import { useLiveActivity } from '../hooks/useLiveEvents';
+import { useMoves } from '../hooks/useMoves';
 import { useNow } from '../hooks/useNow';
 import { usePlans } from '../hooks/usePlans';
 import { usePools } from '../hooks/usePools';
@@ -17,6 +19,7 @@ import { useVault } from '../hooks/useVault';
 import { useWallet } from '../hooks/useWallet';
 import { countdown, rel, shortAddr, usdc } from '../lib/format';
 import { explorerTx } from '../lib/deployments';
+import { SAMPLE_MOVES, SAMPLE_MOVE_POOLS } from '../lib/moves';
 import { LIVE } from '../lib/mode';
 import { useApp } from '../state/AppState';
 
@@ -28,6 +31,7 @@ export default function Dashboard() {
   const poolRead = usePools();
   const plans = usePlans();
   const activity = useLiveActivity(12);
+  const moved = useMoves(poolRead.pools);
   const { mode, setMode, balance: sample, deposited, orders, feed, toast } = useApp();
   const balance = v.balance ?? sample;
   const shownMode = LIVE ? (safety.basePaused ? 'paused' : 'ok') : mode;
@@ -78,6 +82,14 @@ export default function Dashboard() {
             ))}
           </Card>
         </div>
+      </div>
+
+      <div className="mt-4">
+        {LIVE ? (
+          <MoneyMoved moves={moved.moves} pools={poolRead.pools} loading={moved.loading} error={moved.error} note={moved.note} />
+        ) : (
+          <MoneyMoved moves={SAMPLE_MOVES} pools={SAMPLE_MOVE_POOLS} demo limit={2} />
+        )}
       </div>
 
       <Card className="mt-4">

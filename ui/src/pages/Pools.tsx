@@ -1,12 +1,15 @@
 import { Card } from '../components/Card';
 import { Icon, type IconName } from '../components/Icon';
+import { MoneyMoved } from '../components/MoneyMoved';
 import { Pill } from '../components/Pill';
 import { SourceTag } from '../components/SourceTag';
 import { Sparkline } from '../components/Sparkline';
 import { chains, type Pool } from '../data/mock';
+import { useMoves } from '../hooks/useMoves';
 import { useNow } from '../hooks/useNow';
 import { usePools, type LivePool } from '../hooks/usePools';
 import { rel, usdc } from '../lib/format';
+import { SAMPLE_MOVES, SAMPLE_MOVE_POOLS } from '../lib/moves';
 import { LIVE } from '../lib/mode';
 
 const COLS = 'md:grid-cols-[1.6fr_.8fr_.9fr_.9fr_.9fr_1fr_110px]';
@@ -52,6 +55,7 @@ function LiveRow({ p }: { p: LivePool }) {
 
 function LivePools() {
   const live = usePools();
+  const moved = useMoves(live.pools);
   return (
     <>
       <div className="mt-3"><SourceTag kind="live" source="pool.name(), rateBps(), utilizationBps(), balanceOf(vault)" /></div>
@@ -60,6 +64,7 @@ function LivePools() {
         <Card><div className="text-[13px] text-mut">Your vault uses</div><div className="my-2 text-[54px] leading-none tracking-[-0.045em]">{live.inUse && live.inUse.vaultBalance > 0 ? live.inUse.name : '—'}</div><div className="text-[13px] text-mut">{live.inUse && live.inUse.vaultBalance > 0 ? `${usdc(live.inUse.vaultBalance / 1e6)} USDC read from the pool` : 'No pool balance is indexed'}</div></Card>
       </div>
       {live.error && <Card className="mt-4 text-red">Pool read failed. No fallback sample rates are shown.</Card>}
+      <div className="mt-4"><MoneyMoved moves={moved.moves} pools={live.pools} loading={moved.loading} error={moved.error} note={moved.note} /></div>
       {['Base Sepolia', 'Unichain Sepolia'].map((chain) => {
         const rows = live.pools.filter((p) => p.chain === chain);
         return <Card key={chain} className="mt-4">
@@ -85,6 +90,7 @@ export default function Pools() {
         <Card><div className="text-[13px] text-mut">Best rate across both chains</div><div className="my-2 text-[54px] leading-none tracking-[-0.045em]">7.42%</div><div className="text-[13px] text-mut">Pool B on Base Sepolia, a mock pool for the demo</div></Card>
         <Card><div className="text-[13px] text-mut">Your vault uses</div><div className="my-2 text-[54px] leading-none tracking-[-0.045em]">Pool B</div><div className="text-[13px] text-mut">It already holds the best rate, so no move is needed.</div></Card>
       </div>
+      <div className="mt-4"><MoneyMoved moves={SAMPLE_MOVES} pools={SAMPLE_MOVE_POOLS} demo limit={2} /></div>
       {chains.map((c) => (
         <Card key={c.name} className="mt-4">
           <div className="flex items-center justify-between"><h3 className="text-lg font-medium tracking-tight">{c.name}</h3><span className="text-[13px] text-mut">{c.pools.length} pools</span></div>

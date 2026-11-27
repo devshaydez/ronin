@@ -15,6 +15,7 @@ cd ronin
 set -a; . ./.env; set +a
 
 export POOL_U=0x79387679Eb59e5692b3FC566Dcc3fE484eBDB9F4
+export POOL_A=0xCfc59C513752A10Cd024B4B655B829D7e7cCec80
 export BASE_STRESS=0x74815327b2650467eba2aF4D37e6D2Bd9467DbE0
 
 # Read-only preflight: no lREACT is spent here.
@@ -159,6 +160,60 @@ same path from the reviewer screen.
 
 **Cost:** 0 lREACT (sample/local UI state).
 
+### Optional (+60 s) — Make a real move appear in **Money moved**
+
+The panel is on `/app` and `/app/pools`. It is driven by the vault's `Rebalanced` event, so a rate change only
+produces a row if the AI service is running and posts an `ACT` verdict. The mock pool's `RateUpdated`
+subscription is always on; `feedOn()` only controls the separate Aave reserve feed.
+
+**Terminal 1 — check the loop is idle, and start the AI service if it is not already running**
+
+```bash
+cast call "$RSC" "pendingActions()(uint256)" --rpc-url "$LASNA_RPC"
+cast call "$RSC" "requestCooldown()(uint256)" --rpc-url "$LASNA_RPC"
+
+# In a fourth terminal:
+cd ai-service && npm start
+```
+
+**Terminal 1 — create the gap with the existing `setRate` command**
+
+```bash
+# Pool A was below Pool U's 2400 bps. Move it to 4500 bps with utilisation at 35%:
+# a large, low-risk gap that should produce a real rebalance, not a breaker trip.
+cast send "$POOL_A" "setRate(uint256,uint256)" 4500 3500 \
+  --private-key "$DEPLOYER_PK" --rpc-url "$UNICHAIN_SEPOLIA_RPC"
+```
+
+What to expect, in order (about 20–40 s):
+
+1. `RateUpdated(POOL_A, 4500, 3500)` on Unichain wakes the RSC.
+2. `DecisionRequested` on Unichain, then `VerdictPosted` with an `ACT` action targeting Pool A.
+3. `Rebalanced(verdictId, POOL_A, moved, deployed)` on the Unichain vault.
+4. `LoopClosed(1301, verdictId, …)` on Lasna, once the callback is acknowledged.
+
+**UI:** open `/app` or `/app/pools`. The new **Money moved** row appears at the top:
+
+- **To:** Pool A. **From** says *not recorded*, because `Rebalanced` carries only the destination pool.
+- **Moved / Deployed:** the two amounts in the event, in USDC.
+- **Rate gap:** about `2100 bps · 21.00% APY` (4500 − 2400) once the smoothed rate catches up, read from the
+  RSC's `RebalanceRequested`; confidence and reason come from `VerdictPosted` / `VerdictReasoning`. The row shows
+  the on-chain value, not this estimate. If the reason text was not posted, the row says so and shows the hash.
+- **Profit gate:** *not recorded*, because `Rebalanced` has no gate field. The bar highlights Pool A as the new move.
+- **Links:** the Unichain Blockscout receipt, the verdict receipt, and the Reactscan request receipt.
+
+The allocation bar re-animates only for this new event; it does not replay old moves on every poll. If the AI
+returns `IGNORE` or the cooldown is still active, the panel stays empty and no funds move — that is the gate working.
+
+**Cost:** about **0.03–0.06 lREACT** for one rate reaction and its callback, plus Unichain gas.
+
+Reset the rate afterwards (this may trigger one more reaction, so do it after the audience has seen the row):
+
+```bash
+cast send "$POOL_A" "setRate(uint256,uint256)" 2400 3500 \
+  --private-key "$DEPLOYER_PK" --rpc-url "$UNICHAIN_SEPOLIA_RPC"
+```
+
 ### 2:50–3:00 — Proof: where the 22 seconds go
 
 **UI:** `/app/reviewer` → **Proof**, or the landing page’s **Proof** section.
@@ -189,7 +244,9 @@ Say:
 | Heal (`setRate` 3500) | 0.03–0.06 |
 | Retry replay + live `unfreeze` | 0 (replay) + Unichain gas |
 | Orders / feed / proof | 0 |
-| **Total** | **0.09–0.18 lREACT** |
+| Optional real rebalance (`setRate` 4500, then reset) | 0.06–0.12 |
+| **Total without the optional move** | **0.09–0.18 lREACT** |
+| **Total with the optional move** | **0.15–0.30 lREACT** |
 
 Reserve **0.5 lREACT**; stop and top up if the reserve drops below **0.35**. The B2 evidence run itself consumed
 3.8075081 lREACT because it repeated AI requests and retried against a frozen pool — do not use that as the demo
