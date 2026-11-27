@@ -16,7 +16,8 @@ import { usePlans } from '../hooks/usePlans';
 import { useSafetyStatus } from '../hooks/useSafetyStatus';
 import { useVault } from '../hooks/useVault';
 import { rel, usdc } from '../lib/format';
-import { LIVE, PROOF_URL, explorerTx } from '../lib/mode';
+import { RSC } from '../lib/deployments';
+import { LIVE, PROOF_URL, explorerAddress, explorerTx } from '../lib/mode';
 import { useApp } from '../state/AppState';
 
 type Tab = 'proof' | 'ops' | 'demo';
@@ -45,6 +46,7 @@ function Proof() {
           ))}
         </div>
         <p className="mt-3 text-[13px] text-mut"><a href={PROOF_URL} target="_blank" rel="noreferrer" className="text-acc hover:underline">Open the full PROOF.md report.</a></p>
+        <p className="mt-2 text-[13px] text-mut">Reactive contract on Lasna: <a href={explorerAddress('lasna', RSC)} target="_blank" rel="noreferrer" className="text-acc hover:underline">{RSC.slice(0, 6)}…{RSC.slice(-4)} on Reactscan</a></p>
       </Card>
       {!LIVE && <>
         <div className="mt-5 flex items-center justify-between gap-3"><h3 className="text-lg font-medium tracking-tight">Demo replay loops</h3><div className="flex items-center gap-2"><SourceTag kind="sample" reason="demo replay; hashes are not transactions" /><Button small onClick={copy}>Copy as Markdown</Button></div></div>
@@ -94,6 +96,7 @@ function Ops() {
     const last = loops.loops[0];
     const payouts = plans.plans.filter((p) => p.history.some((e) => e.eventName === 'PlanExecuted')).sort((a, b) => Number(b.nextDue - a.nextDue));
     const lastPayout = payouts[0]?.history.find((e) => e.eventName === 'PlanExecuted');
+    const lastReactive = last?.steps.find((s) => s.explorer === 'lasna' && s.status === 'done' && s.tx);
     return (
       <>
         <div className="mt-5 flex items-center justify-between gap-3"><h3 className="text-lg font-medium tracking-tight">Is the automation running?</h3><SourceTag kind="live" source="contract reads + event logs · no private keys" /></div>
@@ -106,6 +109,11 @@ function Ops() {
           <Stat label="AI model call" source="PROOF" value={<>12.0 <span className="text-base text-mut">s median</span></>} sub="Measured normal loops · 2026-11-22 deployment" extra={<div className="w-24"><Sparkline data={[11.2, 9.3, 13.6, 11.1, 13.3, 11.0, 12.0]} /></div>} />
         </div>
         <p className="mt-3 text-[13px] text-mut">Funding and subscription balances are checked read-only by <code>npm run verify</code>; they are not re-read here. The measured model-call median is in <a href={PROOF_URL} target="_blank" rel="noreferrer" className="text-acc hover:underline">PROOF.md</a>.</p>
+        <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
+          {lastReactive?.tx && <a href={explorerTx('lasna', lastReactive.tx)} target="_blank" rel="noreferrer" className="text-acc hover:underline">Last loop close on Reactscan</a>}
+          {lastPayout && payouts[0] && <a href={explorerTx(payouts[0].chain.chain, lastPayout.transactionHash)} target="_blank" rel="noreferrer" className="text-acc hover:underline">Last payout on Blockscout</a>}
+          <a href={explorerAddress('lasna', RSC)} target="_blank" rel="noreferrer" className="text-acc hover:underline">Reactive contract on Reactscan</a>
+        </p>
       </>
     );
   }

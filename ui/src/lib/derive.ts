@@ -211,7 +211,8 @@ export interface LiveStep {
   detail: string;
   status: StepStatus;
   ts?: number;
-  tx: `0x${string}`;
+  /** Absent when the step is still waiting, so no explorer link can point at the wrong chain. */
+  tx?: `0x${string}`;
   explorer: 'base' | 'unichain' | 'lasna';
   movesFunds?: boolean;
 }
@@ -298,7 +299,9 @@ export function buildLoops(
           detail: loop ? `${n(loop.args.requestToRebalanceSecs)} s from request to rebalance` : 'No LoopClosed event for this verdict',
           status: loop ? 'done' : 'waiting',
           ts: loop?.ts,
-          tx: loop?.transactionHash ?? d.tx,
+          // Only a real LoopClosed tx lives on Lasna. Falling back to the Base/Unichain verdict tx here
+          // would render a valid hash under the wrong explorer.
+          tx: loop?.transactionHash,
           explorer: 'lasna',
         },
       ];

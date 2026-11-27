@@ -227,7 +227,7 @@ export default function Landing() {
           <span className="text-mut">Verified source on the explorers:</span>
           <a href={explorerAddress('base', BASE.vault)} target="_blank" rel="noreferrer" className="hover:text-ink">Vault · Base Sepolia</a>
           <a href={explorerAddress('unichain', UNICHAIN.vault)} target="_blank" rel="noreferrer" className="hover:text-ink">Vault · Unichain Sepolia</a>
-          <a href={explorerAddress('lasna', RSC)} target="_blank" rel="noreferrer" className="hover:text-ink">Reactive contract · Lasna</a>
+          <a href={explorerAddress('lasna', RSC)} target="_blank" rel="noreferrer" className="hover:text-ink">Reactive contract · Reactscan</a>
         </div>
       </footer>
     </div>
