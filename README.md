@@ -79,6 +79,15 @@ Choose **YIELD_ONLY** (principal untouched; a period with no yield is skipped an
 depositor's principal pro-rata on deposits, withdrawals and share transfers, so `yieldAvailable(owner)` is real
 yield. Payouts keep working while deposits are paused.
 
+**Known limitation: what `yieldAvailable` does and does not mean.** It is `convertToAssets(balanceOf(owner))`
+minus `costBasis(owner)`, so it counts only yield already accrued in this vault, inherits ERC-4626 share-value
+rounding (a few wei), and is not a forecast. `YIELD_THEN_PRINCIPAL` spends principal once yield runs out, by
+design. The 2026-11-20 build got the accounting wrong: `_withdraw` shrank cost basis in proportion to shares
+burned, so `yieldAvailable` read ~constant while a `YIELD_ONLY` plan paid and that plan could erode principal
+instead of skipping. That is fixed in the current source (`7fe5da3`) and in both live 2026-11-22 vaults, whose
+verified source contains the principal-only reduction; the Phase B2 run used only `YIELD_THEN_PRINCIPAL` with no
+accrued yield, so its evidence is unaffected.
+
 Honest limits: Reactive moves *messages*, not tokens. Funds never cross chains here. Rebalancing happens between
 pools on one chain, and the omnichain layer is protection plus a yield signal.
 

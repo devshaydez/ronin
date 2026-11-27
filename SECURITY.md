@@ -77,6 +77,21 @@ Mock pools are clearly labelled as demo data in the UI and are **not** a yield p
 changed at will, which is exactly what the breaker and stale-data tests exercise. Base Sepolia USDC and the
 mock tokens have no value.
 
+## Known limitation: cost basis and reported yield
+
+`yieldAvailable(owner)` is `convertToAssets(balanceOf(owner)) - costBasis(owner)`, and `costBasis` moves
+proportionally on share transfers while withdrawals reduce it only by their principal part. Two consequences
+remain by design: the number inherits ERC-4626 share-value rounding (a few wei) and only reflects yield already
+accrued in this vault, and `YIELD_THEN_PRINCIPAL` will spend principal once yield is exhausted.
+
+The 2026-11-20 build had a real defect in that accounting: `_withdraw` reduced cost basis in proportion to the
+shares burned, removing the same fraction of unrealised gain, so `yieldAvailable` stayed roughly constant as a
+`YIELD_ONLY` plan paid and the plan could spend principal without ever hitting the skip path; `PlanExecuted` also
+reported `fromPrincipal = 0` for every payout. Fixed in commit `7fe5da3` before the 2026-11-22 deployment. Both
+live vaults' verified source contains the principal-only reduction, so the deployed contracts are not affected and
+no redeploy is needed; the Phase B2 run (only `YIELD_THEN_PRINCIPAL`, no yield) is unaffected too. Nothing in this
+documentation change alters a contract.
+
 ## Not audited
 
 No third party has reviewed this code. There is no bug bounty. The test suite (103 Foundry tests) is
